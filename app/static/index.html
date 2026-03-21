@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Horloge multi-fuseaux</title>
+  <title>Horloge &amp; météo</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@400;600&display=swap" rel="stylesheet" />
@@ -84,6 +84,112 @@
     }
     .dot.ok { background: #4ade80; }
     main { padding: 1.5rem; max-width: 1200px; margin: 0 auto; }
+    .tabs {
+      display: flex;
+      gap: 0.35rem;
+      margin-bottom: 1.25rem;
+      padding: 0.25rem;
+      background: var(--surface);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      width: fit-content;
+      max-width: 100%;
+      flex-wrap: wrap;
+    }
+    .tab {
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 0.5rem 1.1rem;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      background: transparent;
+      color: var(--muted);
+    }
+    .tab:hover { color: var(--text); background: rgba(61, 156, 245, 0.08); }
+    .tab.active {
+      color: var(--text);
+      background: var(--bg);
+      border-color: var(--border);
+      box-shadow: 0 1px 0 rgba(61, 156, 245, 0.25);
+    }
+    .tab-panel[hidden] { display: none !important; }
+    .tab-panel { margin-top: 0.25rem; }
+    .temp-hint {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin: 0 0 1rem;
+    }
+    .geo-results {
+      list-style: none;
+      margin: 0 0 1rem;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .geo-results li button {
+      width: 100%;
+      text-align: left;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      font-weight: 500;
+    }
+    .geo-results li button:hover { border-color: var(--accent); }
+    .geo-results li button.selected {
+      border-color: var(--accent);
+      outline: 1px solid var(--accent);
+    }
+    .selected-place {
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin: 0 0 1rem;
+      min-height: 1.25em;
+    }
+    .selected-place strong { color: var(--text); }
+    input[type="date"] {
+      font-family: inherit;
+      font-size: 0.95rem;
+      padding: 0.5rem 0.75rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      min-width: 11rem;
+    }
+    .temp-chart-wrap {
+      margin-top: 1rem;
+      padding: 1rem;
+      background: var(--surface);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      min-height: 320px;
+      position: relative;
+    }
+    .temp-chart-wrap #tempPlot {
+      width: 100%;
+      min-height: 400px;
+    }
+    .temp-error {
+      margin: 0.75rem 0 0;
+      font-size: 0.9rem;
+      color: var(--danger);
+      min-height: 1.25em;
+    }
+    .temp-warn {
+      margin: 0.5rem 0 0;
+      font-size: 0.85rem;
+      color: #fbbf24;
+    }
+    .temp-plot-hint {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin: 0 0 0.5rem;
+    }
     .controls {
       display: flex;
       flex-wrap: wrap;
@@ -192,7 +298,7 @@
       border: 1px solid var(--border);
       border-radius: 12px;
       padding: 0;
-      max-width: min(420px, 92vw);
+      max-width: min(480px, 92vw);
       box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
     }
     dialog.about-dialog::backdrop {
@@ -231,7 +337,7 @@
   <header>
     <div class="header-left">
       <h1>
-        Horloge multi-fuseaux
+        Horloge &amp; météo
         <span class="version-badge" id="appVersion" aria-label="Version application"></span>
       </h1>
     </div>
@@ -244,19 +350,61 @@
     </div>
   </header>
   <main>
-    <section class="controls" aria-label="Ajouter un fuseau">
-      <div>
-        <label for="tzSearch">Rechercher un fuseau IANA</label>
-        <input type="search" id="tzSearch" placeholder="ex. Tokyo, Paris…" autocomplete="off" />
+    <div class="tabs" role="tablist" aria-label="Sections principales">
+      <button type="button" class="tab active" role="tab" id="tabClock" aria-controls="panelClock" aria-selected="true">Horloge</button>
+      <button type="button" class="tab" role="tab" id="tabTemp" aria-controls="panelTemp" aria-selected="false" tabindex="-1">Température</button>
+    </div>
+
+    <div class="tab-panel" id="panelClock" role="tabpanel" aria-labelledby="tabClock">
+      <section class="controls" aria-label="Ajouter un fuseau">
+        <div>
+          <label for="tzSearch">Rechercher un fuseau IANA</label>
+          <input type="search" id="tzSearch" placeholder="ex. Tokyo, Paris…" autocomplete="off" />
+        </div>
+        <div>
+          <label for="tzSelect">Fuseau horaire</label>
+          <select id="tzSelect"></select>
+        </div>
+        <button type="button" id="btnAdd">Ajouter la tuile</button>
+      </section>
+      <p class="hint-drag">Glissez-déposez les tuiles pour changer leur ordre (enregistré automatiquement).</p>
+      <div class="grid" id="grid" role="list"></div>
+    </div>
+
+    <div class="tab-panel" id="panelTemp" role="tabpanel" aria-labelledby="tabTemp" hidden>
+      <p class="temp-hint">Données historiques via <a href="https://open-meteo.com" target="_blank" rel="noopener noreferrer" style="color: var(--accent);">Open-Meteo</a>. Sélectionnez un lieu, une plage de dates (journées entières) et une résolution.</p>
+      <section class="controls temp-controls" aria-label="Lieu et période">
+        <div>
+          <label for="geoQuery">Lieu</label>
+          <input type="search" id="geoQuery" placeholder="ex. Lyon, Bruxelles…" autocomplete="off" />
+        </div>
+        <button type="button" id="btnGeoSearch" class="btn-secondary">Rechercher</button>
+        <div>
+          <label for="dateStart">Date début</label>
+          <input type="date" id="dateStart" />
+        </div>
+        <div>
+          <label for="dateEnd">Date fin</label>
+          <input type="date" id="dateEnd" />
+        </div>
+        <div>
+          <label for="resSelect">Résolution</label>
+          <select id="resSelect">
+            <option value="hour">Heure</option>
+            <option value="day">Jour</option>
+          </select>
+        </div>
+        <button type="button" id="btnLoadChart">Charger le graphique</button>
+      </section>
+      <ul class="geo-results" id="geoResults" hidden aria-live="polite"></ul>
+      <p class="selected-place" id="selectedPlaceLabel"></p>
+      <p class="temp-warn" id="tempWarn" hidden></p>
+      <div class="temp-chart-wrap">
+        <p class="temp-plot-hint" id="tempPlotHint" hidden>Zoom : <strong>molette</strong> sur le graphique, <strong>glisser un rectangle</strong> sur la zone, ou icônes <strong>+ / −</strong> de la barre d’outils. <strong>Double-clic</strong> : réinitialiser les axes.</p>
+        <div id="tempPlot" aria-label="Graphique de température"></div>
       </div>
-      <div>
-        <label for="tzSelect">Fuseau horaire</label>
-        <select id="tzSelect"></select>
-      </div>
-      <button type="button" id="btnAdd">Ajouter la tuile</button>
-    </section>
-    <p class="hint-drag">Glissez-déposez les tuiles pour changer leur ordre (enregistré automatiquement).</p>
-    <div class="grid" id="grid" role="list"></div>
+      <p class="temp-error" id="tempError" role="alert"></p>
+    </div>
   </main>
 
   <dialog class="about-dialog" id="aboutDialog" aria-labelledby="aboutTitle">
@@ -271,6 +419,7 @@
     </div>
   </dialog>
 
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
   <script>
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${proto}//${window.location.host}/ws`;
@@ -285,12 +434,72 @@
     const aboutDialog = document.getElementById("aboutDialog");
     const aboutBody = document.getElementById("aboutBody");
     const aboutClose = document.getElementById("aboutClose");
+    const tabClock = document.getElementById("tabClock");
+    const tabTemp = document.getElementById("tabTemp");
+    const panelClock = document.getElementById("panelClock");
+    const panelTemp = document.getElementById("panelTemp");
+    const geoQuery = document.getElementById("geoQuery");
+    const btnGeoSearch = document.getElementById("btnGeoSearch");
+    const geoResults = document.getElementById("geoResults");
+    const selectedPlaceLabel = document.getElementById("selectedPlaceLabel");
+    const dateStart = document.getElementById("dateStart");
+    const dateEnd = document.getElementById("dateEnd");
+    const resSelect = document.getElementById("resSelect");
+    const btnLoadChart = document.getElementById("btnLoadChart");
+    const tempPlot = document.getElementById("tempPlot");
+    const tempPlotHint = document.getElementById("tempPlotHint");
+    const tempError = document.getElementById("tempError");
+    const tempWarn = document.getElementById("tempWarn");
+
+    const MAX_HOURLY_WARN_DAYS = 31;
 
     let tiles = [];
     let timesByTz = new Map();
     let allZones = [];
     let ws;
     let dragSourceId = null;
+    let selectedPlace = null;
+    let geoHits = [];
+
+    const plotlyConfig = {
+      responsive: true,
+      scrollZoom: true,
+      displayModeBar: true,
+      displaylogo: false,
+      showAxisDragHandles: true,
+      showAxisRangeEntryBoxes: false,
+      modeBarButtonsToRemove: ["lasso2d", "select2d"],
+    };
+
+    function plotlyBaseLayout(titleText) {
+      return {
+        paper_bgcolor: "rgba(0,0,0,0)",
+        plot_bgcolor: "#0f1419",
+        font: { color: "#e7ecf3", family: "Outfit, system-ui, sans-serif", size: 12 },
+        title: { text: titleText, font: { size: 15 } },
+        xaxis: {
+          type: "date",
+          gridcolor: "#2d3a4d",
+          zerolinecolor: "#2d3a4d",
+          linecolor: "#2d3a4d",
+          tickfont: { color: "#8b9cb3" },
+        },
+        yaxis: {
+          title: "°C",
+          gridcolor: "#2d3a4d",
+          zerolinecolor: "#2d3a4d",
+          linecolor: "#2d3a4d",
+          tickfont: { color: "#8b9cb3" },
+        },
+        legend: {
+          font: { color: "#8b9cb3" },
+          bgcolor: "rgba(0,0,0,0)",
+        },
+        margin: { t: 56, r: 24, b: 72, l: 56 },
+        hovermode: "x unified",
+        dragmode: "zoom",
+      };
+    }
 
     function setWsStatus(ok, text) {
       wsDot.classList.toggle("ok", ok);
@@ -316,6 +525,10 @@
         ["Backend — Uvicorn", data.backend?.uvicorn],
         ["Docker (image)", data.docker],
       ];
+      const c = data.components || {};
+      if (c.plotly) rows.push(["Graphiques — Plotly.js", c.plotly]);
+      if (c.open_meteo) rows.push(["Données météo — Open-Meteo", c.open_meteo]);
+      if (c.fonts) rows.push(["Polices", c.fonts]);
       aboutBody.innerHTML = rows
         .map(
           ([k, v]) =>
@@ -336,6 +549,232 @@
     });
 
     aboutClose.addEventListener("click", () => aboutDialog.close());
+
+    function selectTab(which) {
+      const isClock = which === "clock";
+      tabClock.classList.toggle("active", isClock);
+      tabTemp.classList.toggle("active", !isClock);
+      tabClock.setAttribute("aria-selected", String(isClock));
+      tabTemp.setAttribute("aria-selected", String(!isClock));
+      tabClock.tabIndex = isClock ? 0 : -1;
+      tabTemp.tabIndex = isClock ? -1 : 0;
+      panelClock.hidden = !isClock;
+      panelTemp.hidden = isClock;
+    }
+
+    tabClock.addEventListener("click", () => selectTab("clock"));
+    tabTemp.addEventListener("click", () => selectTab("temp"));
+
+    function countDaysInclusive(startStr, endStr) {
+      const a = new Date(`${startStr}T12:00:00`);
+      const b = new Date(`${endStr}T12:00:00`);
+      return Math.floor((b - a) / 86400000) + 1;
+    }
+
+    function updateSelectedPlaceLabel() {
+      if (!selectedPlace) {
+        selectedPlaceLabel.innerHTML = "";
+        return;
+      }
+      selectedPlaceLabel.innerHTML = `Lieu sélectionné : <strong>${escapeHtml(
+        selectedPlace.label
+      )}</strong> (${selectedPlace.lat.toFixed(4)}°, ${selectedPlace.lon.toFixed(4)}°)`;
+    }
+
+    async function runGeoSearch() {
+      tempError.textContent = "";
+      const q = (geoQuery.value || "").trim();
+      if (!q) {
+        tempError.textContent = "Saisissez un lieu.";
+        return;
+      }
+      btnGeoSearch.disabled = true;
+      try {
+        const url = new URL("https://geocoding-api.open-meteo.com/v1/search");
+        url.searchParams.set("name", q);
+        url.searchParams.set("count", "8");
+        const r = await fetch(url);
+        if (!r.ok) throw new Error("Géocodage indisponible.");
+        const data = await r.json();
+        geoHits = data.results || [];
+        geoResults.innerHTML = "";
+        if (!geoHits.length) {
+          geoResults.hidden = true;
+          tempError.textContent = "Aucun lieu trouvé.";
+          selectedPlace = null;
+          updateSelectedPlaceLabel();
+          return;
+        }
+        geoResults.hidden = false;
+        geoHits.forEach((hit, i) => {
+          const li = document.createElement("li");
+          const b = document.createElement("button");
+          b.type = "button";
+          const parts = [hit.name, hit.admin1, hit.country].filter(Boolean);
+          b.textContent = `${parts.join(", ")} (${hit.latitude.toFixed(2)}°, ${hit.longitude.toFixed(2)}°)`;
+          b.addEventListener("click", () => selectGeoHit(i));
+          li.appendChild(b);
+          geoResults.appendChild(li);
+        });
+      } catch (e) {
+        tempError.textContent = e instanceof Error ? e.message : String(e);
+        geoResults.hidden = true;
+      } finally {
+        btnGeoSearch.disabled = false;
+      }
+    }
+
+    function selectGeoHit(i) {
+      const hit = geoHits[i];
+      if (!hit) return;
+      selectedPlace = {
+        lat: hit.latitude,
+        lon: hit.longitude,
+        label: [hit.name, hit.country].filter(Boolean).join(", "),
+      };
+      geoResults.querySelectorAll("button").forEach((btn, j) => {
+        btn.classList.toggle("selected", j === i);
+      });
+      updateSelectedPlaceLabel();
+      tempError.textContent = "";
+    }
+
+    async function loadTemperatureChart() {
+      tempError.textContent = "";
+      tempWarn.hidden = true;
+      tempWarn.textContent = "";
+
+      if (typeof Plotly === "undefined") {
+        tempError.textContent = "Plotly.js n’est pas chargé.";
+        return;
+      }
+      if (!selectedPlace) {
+        tempError.textContent = "Recherchez et sélectionnez un lieu dans la liste.";
+        return;
+      }
+      const start = dateStart.value;
+      const end = dateEnd.value;
+      if (!start || !end) {
+        tempError.textContent = "Indiquez une date de début et une date de fin.";
+        return;
+      }
+      if (start > end) {
+        tempError.textContent = "La date de fin doit être après ou égale à la date de début.";
+        return;
+      }
+      const res = resSelect.value;
+      const dayCount = countDaysInclusive(start, end);
+      if (res === "hour" && dayCount > MAX_HOURLY_WARN_DAYS) {
+        tempWarn.hidden = false;
+        tempWarn.textContent = `Plage de ${dayCount} jours en résolution horaire : le graphique peut être lent ou difficile à lire.`;
+      }
+
+      btnLoadChart.disabled = true;
+      try {
+        const url = new URL("https://archive-api.open-meteo.com/v1/archive");
+        url.searchParams.set("latitude", String(selectedPlace.lat));
+        url.searchParams.set("longitude", String(selectedPlace.lon));
+        url.searchParams.set("start_date", start);
+        url.searchParams.set("end_date", end);
+        url.searchParams.set("timezone", "auto");
+        if (res === "hour") {
+          url.searchParams.set("hourly", "temperature_2m");
+        } else {
+          url.searchParams.set("daily", "temperature_2m_max,temperature_2m_min");
+        }
+        const r = await fetch(url);
+        if (!r.ok) throw new Error("API météo indisponible.");
+        const data = await r.json();
+        if (data.error === true) {
+          throw new Error(data.reason || "Erreur Open-Meteo.");
+        }
+
+        if (tempPlot.querySelector(".js-plotly-plot")) {
+          Plotly.purge(tempPlot);
+        }
+        tempPlotHint.hidden = true;
+
+        const titleText = `Température — ${selectedPlace.label}`;
+
+        if (res === "hour") {
+          const times = data.hourly?.time || [];
+          const temps = data.hourly?.temperature_2m || [];
+          if (!times.length) {
+            tempError.textContent = "Aucune donnée horaire pour cette période.";
+            return;
+          }
+          const traces = [
+            {
+              x: times,
+              y: temps,
+              type: "scatter",
+              mode: "lines",
+              name: "Température (°C)",
+              line: { color: "#3d9cf5", width: 2, shape: "spline" },
+              fill: "tozeroy",
+              fillcolor: "rgba(61, 156, 245, 0.12)",
+              hovertemplate: "%{x|%d/%m %H:%M}<br>%{y:.1f} °C<extra></extra>",
+            },
+          ];
+          const layout = plotlyBaseLayout(titleText);
+          await Plotly.newPlot(tempPlot, traces, layout, plotlyConfig);
+        } else {
+          const times = data.daily?.time || [];
+          const tmax = data.daily?.temperature_2m_max || [];
+          const tmin = data.daily?.temperature_2m_min || [];
+          if (!times.length) {
+            tempError.textContent = "Aucune donnée journalière pour cette période.";
+            return;
+          }
+          const traces = [
+            {
+              x: times,
+              y: tmax,
+              type: "scatter",
+              mode: "lines+markers",
+              name: "Max (°C)",
+              line: { color: "#f87171", width: 2, shape: "spline" },
+              marker: { size: 5, color: "#f87171" },
+              hovertemplate: "%{x}<br>Max : %{y:.1f} °C<extra></extra>",
+            },
+            {
+              x: times,
+              y: tmin,
+              type: "scatter",
+              mode: "lines+markers",
+              name: "Min (°C)",
+              line: { color: "#3d9cf5", width: 2, shape: "spline" },
+              marker: { size: 5, color: "#3d9cf5" },
+              hovertemplate: "%{x}<br>Min : %{y:.1f} °C<extra></extra>",
+            },
+          ];
+          const layout = plotlyBaseLayout(titleText);
+          await Plotly.newPlot(tempPlot, traces, layout, plotlyConfig);
+        }
+        tempPlotHint.hidden = false;
+      } catch (e) {
+        tempError.textContent = e instanceof Error ? e.message : String(e);
+      } finally {
+        btnLoadChart.disabled = false;
+      }
+    }
+
+    btnGeoSearch.addEventListener("click", runGeoSearch);
+    geoQuery.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") runGeoSearch();
+    });
+    btnLoadChart.addEventListener("click", loadTemperatureChart);
+
+    function initDefaultDates() {
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - 14);
+      const pad = (n) => String(n).padStart(2, "0");
+      const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      dateEnd.value = ymd(end);
+      dateStart.value = ymd(start);
+    }
+    initDefaultDates();
 
     function render() {
       grid.innerHTML = "";
