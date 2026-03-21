@@ -23,11 +23,11 @@ class UnknownTimezoneError(Exception):
 
 
 API_MESSAGES: dict[str, dict[str, str]] = {
-    "index_missing": {
-        "fr": "Fichier index.html introuvable.",
-        "de": "Datei index.html fehlt.",
-        "it": "File index.html mancante.",
-        "en": "index.html file is missing.",
+    "page_missing": {
+        "fr": "Fichier de page introuvable.",
+        "de": "Seitendatei fehlt.",
+        "it": "File di pagina mancante.",
+        "en": "Page file is missing.",
     },
     "unknown_tz": {
         "fr": "Fuseau inconnu : {name}",

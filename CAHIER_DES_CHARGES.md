@@ -80,7 +80,7 @@ Les exigences ci-dessous sont numérotées pour le suivi de recette. Les formula
 | RF-01 | L’application expose une **API HTTP** (REST) pour la version, les métadonnées « à propos », la liste / création / suppression / ordre des tuiles fuseaux, et la recherche de fuseaux IANA. | Majeur |
 | RF-02 | L’application expose un **WebSocket** `/ws` pour pousser l’heure et les mises à jour de tuiles en temps réel. | Majeur |
 | RF-03 | **Hors périmètre** actuel : CLI dédiée et traitements batch planifiés (l’app est un service web continu). | Hors périmètre |
-| RF-04 | **Interface web** à onglets : (1) **Horloge** — tuiles par fuseau, ajout/suppression, glisser-déposer pour l’ordre ; (2) **Température** — choix de lieu (géocodage Open-Meteo), plage de dates, résolution horaire ou journalière, graphique Plotly.js avec zoom. | Majeur |
+| RF-04 | **Interface web** en **deux pages** (`/` horloge, `/meteo` température) avec navigation entre elles : (1) **Horloge** — tuiles par fuseau, ajout/suppression, glisser-déposer pour l’ordre ; (2) **Température** — choix de lieu (géocodage Open-Meteo), plage de dates, résolution horaire ou journalière, graphique Plotly.js avec zoom. | Majeur |
 | RF-05 | Persistance des tuiles horloge dans un fichier JSON sous `DATA_DIR` (ex. volume Docker). | Majeur |
 
 **User stories (référence recette) :**
@@ -96,7 +96,7 @@ Les exigences ci-dessous sont numérotées pour le suivi de recette. Les formula
 | ID | Domaine | Exigence |
 |----|---------|----------|
 | RNF-01 | Disponibilité | [À compléter : ex. objectif 99 % mensuel, fenêtres de maintenance] |
-| RNF-02 | Performances | Service léger ; latence principale liée au réseau pour l’onglet Température (APIs externes). Pas d’objectif chiffré imposé dans ce document. |
+| RNF-02 | Performances | Service léger ; latence principale liée au réseau pour la page température (APIs externes). Pas d’objectif chiffré imposé dans ce document. |
 | RNF-03 | Sécurité | Secrets fournis au runtime (variables d’environnement, secrets orchestrateur) — **aucun secret en clair dans l’image** sauf justification documentée. |
 | RNF-04 | Sécurité | L’utilisateur par défaut dans le conteneur n’est **pas** `root` lorsque c’est compatible avec les besoins d’écriture sur le système de fichiers. |
 | RNF-05 | Observabilité | Logs sur **stdout** / **stderr** ; format et niveau de détail [À compléter : ex. JSON structuré, niveau INFO en prod]. |
@@ -110,7 +110,7 @@ Les exigences ci-dessous sont numérotées pour le suivi de recette. Les formula
 | Élément | Spécification |
 |---------|----------------|
 | Langage | Python **3.12** (image de base `python:3.12-slim`) |
-| Framework | **FastAPI** + **Uvicorn** ; interface statique servie depuis `app/static/index.html` |
+| Framework | **FastAPI** + **Uvicorn** ; interface statique : `app/static/clock.html`, `meteo.html`, `app.css` |
 | Dépendances | `requirements.txt` figé pour la reproductibilité des builds |
 | Docker | `Dockerfile` versionné ; utilisateur non-root `appuser` ; entrée `docker-entrypoint.sh` |
 | Orchestration locale | `docker-compose.yml` — service HTTP (8000), profil optionnel HTTPS (8443) |
@@ -122,7 +122,7 @@ Les exigences ci-dessous sont numérotées pour le suivi de recette. Les formula
 
 ## 7. Architecture cible (schéma)
 
-Vue logique du cycle développement → image → exécution. Le navigateur peut appeler des **APIs publiques** pour l’onglet Température (hors conteneur).
+Vue logique du cycle développement → image → exécution. Le navigateur peut appeler des **APIs publiques** pour la page température (hors conteneur).
 
 ```mermaid
 flowchart LR
@@ -171,7 +171,7 @@ flowchart LR
 | `docker-compose.yml` | Si retenu — services, volumes, réseaux, variables |
 | Dépendances | Fichier(s) de figeage des versions |
 | Tests | Tests unitaires et/ou d’intégration selon le périmètre convenu |
-| Documentation | `README.md` : prérequis, build, run, variables, API, onglets, dépendances externes ; présent cahier des charges |
+| Documentation | `README.md` : prérequis, build, run, variables, API, pages `/` et `/meteo`, dépendances externes ; présent cahier des charges |
 | [À compléter] | [Autres livrables contractuels] |
 
 ---
@@ -220,7 +220,7 @@ Les critères suivants sont vérifiables lors de la recette.
 | Version | Date | Auteur | Résumé des changements |
 |---------|------|--------|------------------------|
 | 1.0 | — | — | Version initiale (gabarit) |
-| 1.1 | 2026-03 | — | Alignement sur l’application Horloge & météo : onglets, Open-Meteo, Plotly, API et contraintes techniques réelles ; README référencé |
+| 1.1 | 2026-03 | — | Alignement sur l’application Horloge & météo : navigation deux pages, Open-Meteo, Plotly, API et contraintes techniques réelles ; README référencé |
 
 ---
 

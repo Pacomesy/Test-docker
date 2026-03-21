@@ -178,15 +178,27 @@ if STATIC_DIR.is_dir():
     app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 
 
-@app.get("/")
-async def index_page(x_app_locale: str | None = Header(None, alias="X-App-Locale")):
-    index_path = STATIC_DIR / "index.html"
-    if not index_path.is_file():
+def _static_page_response(
+    filename: str,
+    x_app_locale: str | None,
+) -> FileResponse:
+    path = STATIC_DIR / filename
+    if not path.is_file():
         raise HTTPException(
             status_code=404,
-            detail=api_msg(x_app_locale, "index_missing"),
+            detail=api_msg(x_app_locale, "page_missing"),
         )
-    return FileResponse(index_path)
+    return FileResponse(path)
+
+
+@app.get("/")
+async def clock_page(x_app_locale: str | None = Header(None, alias="X-App-Locale")):
+    return _static_page_response("clock.html", x_app_locale)
+
+
+@app.get("/meteo")
+async def meteo_page(x_app_locale: str | None = Header(None, alias="X-App-Locale")):
+    return _static_page_response("meteo.html", x_app_locale)
 
 
 @app.get("/api/version")

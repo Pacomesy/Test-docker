@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Horloge &amp; météo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/app.css" />
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <h1>
+        <span data-i18n="appTitle"></span>
+        <span class="version-badge" id="appVersion" data-i18n-aria-label="versionAria"></span>
+      </h1>
+    </div>
+    <div class="header-right">
+      <div class="lang-switch" role="group" id="langSwitchGroup">
+        <button type="button" class="btn-secondary lang-btn" data-set-lang="de" aria-pressed="false">DE</button>
+        <button type="button" class="btn-secondary lang-btn" data-set-lang="fr" aria-pressed="false">FR</button>
+        <button type="button" class="btn-secondary lang-btn" data-set-lang="it" aria-pressed="false">IT</button>
+        <button type="button" class="btn-secondary lang-btn" data-set-lang="en" aria-pressed="false">EN</button>
+      </div>
+      <button type="button" id="btnAbout" class="btn-secondary" data-i18n="btnAbout"></button>
+    </div>
+  </header>
+  <main>
+    <nav class="main-nav" id="mainNav" aria-label="">
+      <a href="/" class="nav-link" data-i18n="tabClock"></a>
+      <a href="/meteo" class="nav-link" data-i18n="tabTemp" aria-current="page"></a>
+    </nav>
+
+    <p class="temp-hint" id="tempHintPara"></p>
+    <section class="controls temp-controls" id="tempControls" aria-label="">
+      <div>
+        <label for="geoQuery" data-i18n="labelPlace"></label>
+        <input type="search" id="geoQuery" data-i18n-placeholder="phPlace" placeholder="" autocomplete="off" />
+      </div>
+      <button type="button" id="btnGeoSearch" class="btn-secondary" data-i18n="btnSearch"></button>
+      <div>
+        <label for="dateStart" data-i18n="labelDateStart"></label>
+        <input type="date" id="dateStart" />
+      </div>
+      <div>
+        <label for="dateEnd" data-i18n="labelDateEnd"></label>
+        <input type="date" id="dateEnd" />
+      </div>
+      <div>
+        <label for="resSelect" data-i18n="labelResolution"></label>
+        <select id="resSelect">
+          <option value="hour" data-i18n="resHour"></option>
+          <option value="day" data-i18n="resDay"></option>
+        </select>
+      </div>
+      <button type="button" id="btnLoadChart" data-i18n="btnLoadChart"></button>
+    </section>
+    <ul class="geo-results" id="geoResults" hidden aria-live="polite"></ul>
+    <p class="selected-place" id="selectedPlaceLabel"></p>
+    <p class="temp-warn" id="tempWarn" hidden></p>
+    <div class="temp-chart-wrap">
+      <p class="temp-plot-hint" id="tempPlotHint" hidden></p>
+      <div id="tempPlot"></div>
+    </div>
+    <p class="temp-error" id="tempError" role="alert"></p>
+  </main>
+
+  <dialog class="about-dialog" id="aboutDialog" aria-labelledby="aboutTitle">
+    <div class="about-inner">
+      <h2 id="aboutTitle" data-i18n="aboutTitle"></h2>
+      <table class="about-table" id="aboutTable">
+        <tbody id="aboutBody"></tbody>
+      </table>
+      <div class="about-actions">
+        <button type="button" id="aboutClose" data-i18n="btnClose"></button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="/assets/locales.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+  <script>
+    const LOCALE_STORAGE_KEY = "appLocale";
+
+    function readStoredLocale() {
+      const T = window.APP_I18N || {};
+      const raw = localStorage.getItem(LOCALE_STORAGE_KEY);
+      if (raw && T[raw]) return raw;
+      const nav = (navigator.language || "fr").slice(0, 2).toLowerCase();
+      if (T[nav]) return nav;
+      return "fr";
+    }
+
+    let locale = readStoredLocale();
+    document.documentElement.lang = locale;
+
+    function t(key, params) {
+      const T = window.APP_I18N || {};
+      const table = T[locale] || T.fr || {};
+      let s = table[key] ?? T.fr?.[key] ?? key;
+      if (params) {
+        for (const [k, v] of Object.entries(params)) {
+          s = s.split(`{${k}}`).join(String(v));
+        }
+      }
+      return s;
+    }
+
+    function apiFetch(input, init = {}) {
+      const opt = { ...init };
+      opt.headers = new Headers(init.headers || {});
+      opt.headers.set("X-App-Locale", locale);
+      return fetch(input, opt);
+    }
+
+    let lastChartPayload = null;
+
+    function updateLangButtons() {
+      document.querySelectorAll("[data-set-lang]").forEach((btn) => {
+        const on = btn.getAttribute("data-set-lang") === locale;
+        btn.classList.toggle("active", on);
+        btn.setAttribute("aria-pressed", String(on));
+      });
+    }
+
+    function applyLocale() {
+      document.documentElement.lang = locale;
+      document.querySelectorAll("[data-i18n]").forEach((el) => {
+        el.textContent = t(el.getAttribute("data-i18n"));
+      });
+      document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+        el.setAttribute("placeholder", t(el.getAttribute("data-i18n-placeholder")));
+      });
+      document.querySelectorAll("[data-i18n-aria-label]").forEach((el) => {
+        el.setAttribute("aria-label", t(el.getAttribute("data-i18n-aria-label")));
+      });
+      const g = document.getElementById("langSwitchGroup");
+      if (g) g.setAttribute("aria-label", t("langGroupAria"));
+      const langAria = { de: "langDE", fr: "langFR", it: "langIT", en: "langEN" };
+      document.querySelectorAll("[data-set-lang]").forEach((btn) => {
+        const code = btn.getAttribute("data-set-lang");
+        btn.setAttribute("aria-label", t(langAria[code] || "langEN"));
+      });
+      const mn = document.getElementById("mainNav");
+      if (mn) mn.setAttribute("aria-label", t("navMainAria"));
+      const tc = document.getElementById("tempControls");
+      if (tc) tc.setAttribute("aria-label", t("tempSectionAria"));
+      const resSelect = document.getElementById("resSelect");
+      const oh = resSelect.querySelector('option[value="hour"]');
+      if (oh) oh.textContent = t("resHour");
+      const od = resSelect.querySelector('option[value="day"]');
+      if (od) od.textContent = t("resDay");
+      const tempPlotHint = document.getElementById("tempPlotHint");
+      if (tempPlotHint) tempPlotHint.textContent = t("tempPlotHint");
+      const tempPlot = document.getElementById("tempPlot");
+      tempPlot.setAttribute("aria-label", t("tempPlotAria"));
+      const hintEl = document.getElementById("tempHintPara");
+      if (hintEl) {
+        hintEl.innerHTML = `${escapeHtml(t("tempHint1"))} <a href="https://open-meteo.com" target="_blank" rel="noopener noreferrer" style="color: var(--accent);">Open-Meteo</a>. ${escapeHtml(t("tempHint2"))}`;
+      }
+      updateLangButtons();
+      document.title = t("appTitle");
+      if (typeof Plotly !== "undefined" && lastChartPayload && tempPlot.querySelector(".js-plotly-plot")) {
+        redrawPlotFromCache();
+      }
+    }
+
+    function setLanguage(code) {
+      if (!window.APP_I18N?.[code]) return;
+      locale = code;
+      localStorage.setItem(LOCALE_STORAGE_KEY, code);
+      applyLocale();
+    }
+
+    document.querySelectorAll("[data-set-lang]").forEach((btn) => {
+      btn.addEventListener("click", () => setLanguage(btn.getAttribute("data-set-lang")));
+    });
+
+    const geoQuery = document.getElementById("geoQuery");
+    const btnGeoSearch = document.getElementById("btnGeoSearch");
+    const geoResults = document.getElementById("geoResults");
+    const selectedPlaceLabel = document.getElementById("selectedPlaceLabel");
+    const dateStart = document.getElementById("dateStart");
+    const dateEnd = document.getElementById("dateEnd");
+    const resSelect = document.getElementById("resSelect");
+    const btnLoadChart = document.getElementById("btnLoadChart");
+    const tempPlot = document.getElementById("tempPlot");
+    const tempPlotHint = document.getElementById("tempPlotHint");
+    const tempError = document.getElementById("tempError");
+    const tempWarn = document.getElementById("tempWarn");
+    const appVersionEl = document.getElementById("appVersion");
+    const btnAbout = document.getElementById("btnAbout");
+    const aboutDialog = document.getElementById("aboutDialog");
+    const aboutBody = document.getElementById("aboutBody");
+    const aboutClose = document.getElementById("aboutClose");
+
+    const MAX_HOURLY_WARN_DAYS = 31;
+    let selectedPlace = null;
+    let geoHits = [];
+
+    const METEO_STORAGE_KEY = "meteoUiState";
+    const METEO_STATE_VERSION = 1;
+
+    function saveMeteoState() {
+      try {
+        const payload = {
+          v: METEO_STATE_VERSION,
+          dateStart: dateStart.value,
+          dateEnd: dateEnd.value,
+          resolution: resSelect.value,
+          geoQuery: geoQuery.value,
+          place:
+            selectedPlace &&
+            typeof selectedPlace.lat === "number" &&
+            typeof selectedPlace.lon === "number"
+              ? {
+                  lat: selectedPlace.lat,
+                  lon: selectedPlace.lon,
+                  label: selectedPlace.label || "",
+                }
+              : null,
+        };
+        localStorage.setItem(METEO_STORAGE_KEY, JSON.stringify(payload));
+      } catch (_) {
+        /* quota, mode privé */
+      }
+    }
+
+    /** @returns {boolean} true si un lieu a été restauré (rechargement du graphique souhaité) */
+    function restoreMeteoState() {
+      try {
+        const raw = localStorage.getItem(METEO_STORAGE_KEY);
+        if (!raw) return false;
+        const s = JSON.parse(raw);
+        if (!s || s.v !== METEO_STATE_VERSION) return false;
+        if (typeof s.dateStart === "string") dateStart.value = s.dateStart;
+        if (typeof s.dateEnd === "string") dateEnd.value = s.dateEnd;
+        if (s.resolution === "hour" || s.resolution === "day") resSelect.value = s.resolution;
+        if (typeof s.geoQuery === "string") geoQuery.value = s.geoQuery;
+        if (
+          s.place &&
+          typeof s.place.lat === "number" &&
+          typeof s.place.lon === "number"
+        ) {
+          selectedPlace = {
+            lat: s.place.lat,
+            lon: s.place.lon,
+            label: typeof s.place.label === "string" ? s.place.label : "",
+          };
+          updateSelectedPlaceLabel();
+          return true;
+        }
+      } catch (_) {
+        /* JSON invalide */
+      }
+      return false;
+    }
+
+    const plotlyConfig = {
+      responsive: true,
+      scrollZoom: true,
+      displayModeBar: true,
+      displaylogo: false,
+      showAxisDragHandles: true,
+      showAxisRangeEntryBoxes: false,
+      modeBarButtonsToRemove: ["lasso2d", "select2d"],
+    };
+
+    function plotlyBaseLayout(titleText) {
+      return {
+        paper_bgcolor: "rgba(0,0,0,0)",
+        plot_bgcolor: "#0f1419",
+        font: { color: "#e7ecf3", family: "Outfit, system-ui, sans-serif", size: 12 },
+        title: { text: titleText, font: { size: 15 } },
+        xaxis: {
+          type: "date",
+          gridcolor: "#2d3a4d",
+          zerolinecolor: "#2d3a4d",
+          linecolor: "#2d3a4d",
+          tickfont: { color: "#8b9cb3" },
+        },
+        yaxis: {
+          title: t("yAxisC"),
+          gridcolor: "#2d3a4d",
+          zerolinecolor: "#2d3a4d",
+          linecolor: "#2d3a4d",
+          tickfont: { color: "#8b9cb3" },
+        },
+        legend: {
+          font: { color: "#8b9cb3" },
+          bgcolor: "rgba(0,0,0,0)",
+        },
+        margin: { t: 56, r: 24, b: 72, l: 56 },
+        hovermode: "x unified",
+        dragmode: "zoom",
+      };
+    }
+
+    function buildPlotlyFigure(res, data, placeLabel) {
+      const titleText = t("plotTitle", { label: placeLabel });
+      if (res === "hour") {
+        const times = data.hourly?.time || [];
+        const temps = data.hourly?.temperature_2m || [];
+        const traces = [
+          {
+            x: times,
+            y: temps,
+            type: "scatter",
+            mode: "lines",
+            name: t("traceTemp"),
+            line: { color: "#3d9cf5", width: 2, shape: "spline" },
+            fill: "tozeroy",
+            fillcolor: "rgba(61, 156, 245, 0.12)",
+            hovertemplate: t("hoverHour"),
+          },
+        ];
+        return { traces, layout: plotlyBaseLayout(titleText) };
+      }
+      const times = data.daily?.time || [];
+      const tmax = data.daily?.temperature_2m_max || [];
+      const tmin = data.daily?.temperature_2m_min || [];
+      const traces = [
+        {
+          x: times,
+          y: tmax,
+          type: "scatter",
+          mode: "lines+markers",
+          name: t("traceMax"),
+          line: { color: "#f87171", width: 2, shape: "spline" },
+          marker: { size: 5, color: "#f87171" },
+          hovertemplate: t("hoverMaxLine"),
+        },
+        {
+          x: times,
+          y: tmin,
+          type: "scatter",
+          mode: "lines+markers",
+          name: t("traceMin"),
+          line: { color: "#3d9cf5", width: 2, shape: "spline" },
+          marker: { size: 5, color: "#3d9cf5" },
+          hovertemplate: t("hoverMinLine"),
+        },
+      ];
+      return { traces, layout: plotlyBaseLayout(titleText) };
+    }
+
+    async function redrawPlotFromCache() {
+      if (!lastChartPayload || typeof Plotly === "undefined") return;
+      const { res, data, placeLabel } = lastChartPayload;
+      const { traces, layout } = buildPlotlyFigure(res, data, placeLabel);
+      if (tempPlot.querySelector(".js-plotly-plot")) {
+        await Plotly.react(tempPlot, traces, layout, plotlyConfig);
+      }
+    }
+
+    async function loadAppVersion() {
+      try {
+        const r = await apiFetch("/api/version");
+        const d = await r.json();
+        appVersionEl.textContent = d.version ? `v${d.version}` : "";
+      } catch {
+        appVersionEl.textContent = "";
+      }
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function fmtAboutCell(v) {
+      if (v == null || v === "") return t("aboutMissing");
+      return String(v);
+    }
+
+    function renderAboutRows(data) {
+      const rows = [
+        [t("aboutApp"), fmtAboutCell(data.app)],
+        [t("aboutFrontend"), fmtAboutCell(data.frontend)],
+        [t("aboutBackendPython"), fmtAboutCell(data.backend?.python)],
+        [t("aboutBackendFastapi"), fmtAboutCell(data.backend?.fastapi)],
+        [t("aboutBackendUvicorn"), fmtAboutCell(data.backend?.uvicorn)],
+        [
+          t("aboutDocker"),
+          data.docker != null && data.docker !== ""
+            ? String(data.docker)
+            : t("aboutDockerUnset"),
+        ],
+      ];
+      const c = data.components || {};
+      if (c.plotly) rows.push([t("aboutPlotly"), fmtAboutCell(c.plotly)]);
+      if (c.open_meteo) rows.push([t("aboutOpenMeteo"), fmtAboutCell(c.open_meteo)]);
+      if (c.fonts) rows.push([t("aboutFonts"), fmtAboutCell(c.fonts)]);
+      aboutBody.innerHTML = rows
+        .map(
+          ([k, v]) =>
+            `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`
+        )
+        .join("");
+    }
+
+    btnAbout.addEventListener("click", async () => {
+      try {
+        const r = await apiFetch("/api/about");
+        const d = await r.json();
+        renderAboutRows(d);
+        aboutDialog.showModal();
+      } catch (e) {
+        alert(`${t("errAboutLoad")} ${e}`);
+      }
+    });
+
+    aboutClose.addEventListener("click", () => aboutDialog.close());
+
+    function countDaysInclusive(startStr, endStr) {
+      const a = new Date(`${startStr}T12:00:00`);
+      const b = new Date(`${endStr}T12:00:00`);
+      return Math.floor((b - a) / 86400000) + 1;
+    }
+
+    function updateSelectedPlaceLabel() {
+      if (!selectedPlace) {
+        selectedPlaceLabel.innerHTML = "";
+        return;
+      }
+      selectedPlaceLabel.innerHTML = `${escapeHtml(t("selectedPlace"))} <strong>${escapeHtml(
+        selectedPlace.label
+      )}</strong> (${selectedPlace.lat.toFixed(4)}°, ${selectedPlace.lon.toFixed(4)}°)`;
+    }
+
+    async function runGeoSearch() {
+      tempError.textContent = "";
+      const q = (geoQuery.value || "").trim();
+      if (!q) {
+        tempError.textContent = t("errGeoEmpty");
+        return;
+      }
+      btnGeoSearch.disabled = true;
+      try {
+        const url = new URL("https://geocoding-api.open-meteo.com/v1/search");
+        url.searchParams.set("name", q);
+        url.searchParams.set("count", "8");
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(t("errGeoUnavailable"));
+        const data = await r.json();
+        geoHits = data.results || [];
+        geoResults.innerHTML = "";
+        if (!geoHits.length) {
+          geoResults.hidden = true;
+          tempError.textContent = t("errNoPlaces");
+          selectedPlace = null;
+          updateSelectedPlaceLabel();
+          saveMeteoState();
+          return;
+        }
+        geoResults.hidden = false;
+        geoHits.forEach((hit, i) => {
+          const li = document.createElement("li");
+          const b = document.createElement("button");
+          b.type = "button";
+          const parts = [hit.name, hit.admin1, hit.country].filter(Boolean);
+          b.textContent = `${parts.join(", ")} (${hit.latitude.toFixed(2)}°, ${hit.longitude.toFixed(2)}°)`;
+          b.addEventListener("click", () => selectGeoHit(i));
+          li.appendChild(b);
+          geoResults.appendChild(li);
+        });
+      } catch (e) {
+        tempError.textContent = e instanceof Error ? e.message : String(e);
+        geoResults.hidden = true;
+      } finally {
+        btnGeoSearch.disabled = false;
+      }
+    }
+
+    function selectGeoHit(i) {
+      const hit = geoHits[i];
+      if (!hit) return;
+      selectedPlace = {
+        lat: hit.latitude,
+        lon: hit.longitude,
+        label: [hit.name, hit.country].filter(Boolean).join(", "),
+      };
+      geoResults.querySelectorAll("button").forEach((btn, j) => {
+        btn.classList.toggle("selected", j === i);
+      });
+      updateSelectedPlaceLabel();
+      tempError.textContent = "";
+      saveMeteoState();
+    }
+
+    async function loadTemperatureChart() {
+      tempError.textContent = "";
+      tempWarn.hidden = true;
+      tempWarn.textContent = "";
+
+      if (typeof Plotly === "undefined") {
+        tempError.textContent = t("errPlotly");
+        return;
+      }
+      if (!selectedPlace) {
+        tempError.textContent = t("errSelectPlace");
+        return;
+      }
+      const start = dateStart.value;
+      const end = dateEnd.value;
+      if (!start || !end) {
+        tempError.textContent = t("errDatesRequired");
+        return;
+      }
+      if (start > end) {
+        tempError.textContent = t("errDateOrder");
+        return;
+      }
+      const res = resSelect.value;
+      const dayCount = countDaysInclusive(start, end);
+      if (res === "hour" && dayCount > MAX_HOURLY_WARN_DAYS) {
+        tempWarn.hidden = false;
+        tempWarn.textContent = t("warnHourlyRange", { days: dayCount });
+      }
+
+      btnLoadChart.disabled = true;
+      try {
+        const url = new URL("https://archive-api.open-meteo.com/v1/archive");
+        url.searchParams.set("latitude", String(selectedPlace.lat));
+        url.searchParams.set("longitude", String(selectedPlace.lon));
+        url.searchParams.set("start_date", start);
+        url.searchParams.set("end_date", end);
+        url.searchParams.set("timezone", "auto");
+        if (res === "hour") {
+          url.searchParams.set("hourly", "temperature_2m");
+        } else {
+          url.searchParams.set("daily", "temperature_2m_max,temperature_2m_min");
+        }
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(t("errWeatherApi"));
+        const data = await r.json();
+        if (data.error === true) {
+          throw new Error(data.reason || t("errOpenMeteoDefault"));
+        }
+
+        if (tempPlot.querySelector(".js-plotly-plot")) {
+          Plotly.purge(tempPlot);
+        }
+        tempPlotHint.hidden = true;
+
+        if (res === "hour") {
+          const times = data.hourly?.time || [];
+          if (!times.length) {
+            tempError.textContent = t("errHourlyEmpty");
+            return;
+          }
+        } else {
+          const times = data.daily?.time || [];
+          if (!times.length) {
+            tempError.textContent = t("errDailyEmpty");
+            return;
+          }
+        }
+
+        const { traces, layout } = buildPlotlyFigure(res, data, selectedPlace.label);
+        await Plotly.newPlot(tempPlot, traces, layout, plotlyConfig);
+        lastChartPayload = {
+          res,
+          data,
+          placeLabel: selectedPlace.label,
+        };
+        tempPlotHint.hidden = false;
+        saveMeteoState();
+      } catch (e) {
+        tempError.textContent = e instanceof Error ? e.message : String(e);
+      } finally {
+        btnLoadChart.disabled = false;
+      }
+    }
+
+    btnGeoSearch.addEventListener("click", runGeoSearch);
+    geoQuery.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") runGeoSearch();
+    });
+    geoQuery.addEventListener("blur", saveMeteoState);
+    dateStart.addEventListener("change", saveMeteoState);
+    dateEnd.addEventListener("change", saveMeteoState);
+    resSelect.addEventListener("change", saveMeteoState);
+    btnLoadChart.addEventListener("click", loadTemperatureChart);
+
+    function initDefaultDates() {
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - 14);
+      const pad = (n) => String(n).padStart(2, "0");
+      const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      dateEnd.value = ymd(end);
+      dateStart.value = ymd(start);
+    }
+    initDefaultDates();
+    const shouldReloadChart = restoreMeteoState();
+    applyLocale();
+    loadAppVersion();
+    if (
+      shouldReloadChart &&
+      selectedPlace &&
+      dateStart.value &&
+      dateEnd.value &&
+      dateStart.value <= dateEnd.value
+    ) {
+      void loadTemperatureChart();
+    }
+  </script>
+</body>
+</html>

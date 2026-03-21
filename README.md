@@ -1,24 +1,25 @@
 # Horloge & météo (Python + Docker)
 
-Application web **FastAPI** avec interface statique (`index.html`) : **horloge multi-fuseaux** et **historique de température** (données externes).
+Application web **FastAPI** avec interface statique (`clock.html`, `meteo.html`, `app.css`) : **horloge multi-fuseaux** (`/`) et **historique de température** (`/meteo`, données externes).
 
 ## Fonctionnalités
 
-### Onglet Horloge
+### Page Horloge (`/`)
 
 - Affichage de l’heure courante pour plusieurs **fuseaux IANA**.
 - Mises à jour en **temps réel** via **WebSocket** (`/ws`), sans rechargement de page.
 - **Ajout / suppression** de tuiles, **réordonnancement** par glisser-déposer.
 - Configuration **persistée** dans un volume Docker : `DATA_DIR/tiles.json` (souvent `/data/tiles.json`).
 
-### Onglet Température
+### Page Température (`/meteo`)
 
 - **Lieu** : recherche par nom via l’API de **géocodage Open-Meteo** (appel navigateur → `geocoding-api.open-meteo.com`).
 - **Période** : deux dates (journées entières) ; récupération via l’**API archive** Open-Meteo (`archive-api.open-meteo.com`).
 - **Résolution** : horaire (`temperature_2m`) ou journalière (max / min).
 - **Graphique** : **Plotly.js** (CDN), avec zoom (molette, rectangle, barre d’outils) et double-clic pour réinitialiser les axes.
+- **Persistance** : en passant sur la page horloge puis de retour sur `/meteo`, le **lieu choisi**, les **dates**, la **résolution** et la **recherche** sont repris depuis le **`localStorage`** du navigateur (clé `meteoUiState`). Si un lieu était enregistré, le **graphique est rechargé automatiquement** (nouvel appel Open-Meteo).
 
-Les appels Open-Meteo et le chargement de Plotly se font **depuis le navigateur** (aucun proxy côté serveur). Un accès Internet depuis le poste client est donc nécessaire pour cet onglet.
+Les appels Open-Meteo et le chargement de Plotly se font **depuis le navigateur** (aucun proxy côté serveur). Un accès Internet depuis le poste client est donc nécessaire pour la page température.
 
 ### Autres
 
@@ -30,7 +31,7 @@ Les appels Open-Meteo et le chargement de Plotly se font **depuis le navigateur*
 - Quatre boutons dans l’en-tête choisissent la langue de l’interface ; le choix est mémorisé dans **`localStorage`** (`appLocale`).
 - Les libellés, messages d’erreur côté page, tableau « À propos » et textes Plotly suivent la langue active. Sur les **tuiles horloge** : **ligne 1** date **`dd.MM.yyyy`**, **ligne 2** heure **`HH:mm:ss`** suivie du décalage (**`UTC ±h`** ou **`UTC ±h:mm`** si demi-fuseaux).
 - Les requêtes **`fetch`** vers l’API applicative envoient l’en-tête **`X-App-Locale`** (`de`, `fr`, `it`, `en`) pour que les messages d’erreur HTTP (`detail`) soient dans la même langue.
-- Fichier des chaînes : [`app/static/locales.js`](app/static/locales.js) ; logique et montage dans [`app/static/index.html`](app/static/index.html).
+- Fichier des chaînes : [`app/static/locales.js`](app/static/locales.js) ; pages [`app/static/clock.html`](app/static/clock.html) et [`app/static/meteo.html`](app/static/meteo.html) ; styles partagés [`app/static/app.css`](app/static/app.css).
 
 ## Prérequis
 
@@ -77,8 +78,9 @@ docker build --build-arg APP_VERSION=1.2.0 -t horloge-meteo:1.2.0 .
 docker compose up app
 ```
 
-- Interface : [http://localhost:8000](http://localhost:8000)
-- WebSocket : `ws://localhost:8000/ws`
+- Horloge : [http://localhost:8000/](http://localhost:8000/)
+- Température : [http://localhost:8000/meteo](http://localhost:8000/meteo)
+- WebSocket (page horloge) : `ws://localhost:8000/ws`
 
 Arrêt : `Ctrl+C` ou `docker compose down`.
 
@@ -104,8 +106,8 @@ docker compose down -v
    docker compose --profile https up app-https
    ```
 
-- Interface : [https://localhost:8443](https://localhost:8443) (le navigateur avertira sur un certificat auto-signé : acceptation manuelle possible en local)
-- WebSocket : `wss://localhost:8443/ws`
+- Horloge : [https://localhost:8443/](https://localhost:8443/) — température : `/meteo`
+- WebSocket (page horloge) : `wss://localhost:8443/ws`
 
 En production, utilisez des certificats émis par une AC de confiance (Let’s Encrypt, PKI interne, etc.) et montez-les en lecture seule comme dans `docker-compose.yml`.
 
@@ -134,13 +136,13 @@ En appelant l’API hors navigateur, vous pouvez passer **`X-App-Locale: de`** (
 
 **WebSocket** : `GET /ws` (protocole WebSocket) — init + ticks horloge + synchronisation des tuiles entre clients.
 
-L’interface permet de **réordonner les tuiles par glisser-déposer** ; l’ordre est enregistré dans `tiles.json` et synchronisé entre onglets / navigateurs via WebSocket.
+Sur la page horloge, **réordonner les tuiles par glisser-déposer** enregistre l’ordre dans `tiles.json` et le synchronise entre navigateurs / fenêtres ouvertes via WebSocket.
 
 ## Dépendances externes (navigateur)
 
 | Ressource | Usage |
 |-----------|--------|
-| [Open-Meteo](https://open-meteo.com) | Géocodage et série historique de température (onglet Température) |
+| [Open-Meteo](https://open-meteo.com) | Géocodage et série historique de température (page `/meteo`) |
 | [Plotly.js](https://plotly.com/javascript/) | Graphique interactif (zoom, barre d’outils) |
 | [Google Fonts](https://fonts.google.com) | Outfit, JetBrains Mono |
 
@@ -161,11 +163,13 @@ Sous Linux/macOS : `export DATA_DIR=./data` puis `mkdir -p data`.
 
 ```
 app/
-  main.py          # FastAPI, WebSocket, API tuiles, page d’accueil
+  main.py          # FastAPI, WebSocket, API tuiles, pages / et /meteo
   version.py       # __version__ applicative
   i18n_api.py      # Messages HTTP localisés (X-App-Locale)
   static/
-    index.html     # Onglets Horloge / Température, i18n, client WebSocket, Plotly + Open-Meteo
+    clock.html     # Page horloge, WebSocket, tuiles
+    meteo.html     # Page température, Plotly + Open-Meteo (navigateur)
+    app.css        # Styles partagés
     locales.js     # Chaînes DE / FR / IT / EN pour l’interface
 Dockerfile
 docker-compose.yml
@@ -178,5 +182,5 @@ CAHIER_DES_CHARGES.md
 ## Dépannage
 
 - **`exec /docker-entrypoint.sh: no such file or directory`** sous Linux : fins de ligne CRLF sur `docker-entrypoint.sh`. Le `Dockerfile` applique un `sed` pour les normaliser au build ; le fichier [`.gitattributes`](.gitattributes) force les `*.sh` en LF.
-- **Onglet Température vide ou erreurs réseau** : vérifier que le navigateur peut joindre les domaines Open-Meteo et le CDN Plotly (pare-feu, politique réseau).
-- **Modifications d’interface non visibles** après `docker compose build` : reconstruire l’image (`docker compose build --no-cache`) ou s’assurer que le volume ne remplace pas `index.html` (ce projet ne monte pas le code source sur `app` par défaut — seul `/data` est en volume).
+- **Page température vide ou erreurs réseau** : vérifier que le navigateur peut joindre les domaines Open-Meteo et le CDN Plotly (pare-feu, politique réseau).
+- **Modifications d’interface non visibles** après `docker compose build` : reconstruire l’image (`docker compose build --no-cache`) ou s’assurer que le volume ne remplace pas les fichiers sous `app/static` (ce projet ne monte pas le code source sur `app` par défaut — seul `/data` est en volume).

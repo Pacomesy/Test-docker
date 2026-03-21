@@ -1,5 +1,5 @@
 /**
- * Chaînes UI (DE, FR, IT, EN). Chargé avant le script principal dans index.html.
+ * Chaînes UI (DE, FR, IT, EN). Chargé depuis clock.html et meteo.html.
  * Clés : même ensemble pour chaque locale. {name}, {label}, {days} pour t().
  */
 window.APP_I18N = {
@@ -16,7 +16,7 @@ window.APP_I18N = {
     wsLive: "Temps réel actif",
     wsReconnecting: "Déconnecté — reconnexion…",
     wsError: "Erreur réseau",
-    tablistAria: "Sections principales",
+    navMainAria: "Navigation principale",
     tabClock: "Horloge",
     tabTemp: "Température",
     clockSectionAria: "Ajouter un fuseau",
@@ -93,7 +93,7 @@ window.APP_I18N = {
     wsLive: "Live aktiv",
     wsReconnecting: "Getrennt — verbinde erneut…",
     wsError: "Netzwerkfehler",
-    tablistAria: "Hauptbereiche",
+    navMainAria: "Hauptnavigation",
     tabClock: "Uhr",
     tabTemp: "Temperatur",
     clockSectionAria: "Zeitzone hinzufügen",
@@ -247,7 +247,7 @@ window.APP_I18N = {
     wsLive: "Live updates on",
     wsReconnecting: "Disconnected — reconnecting…",
     wsError: "Network error",
-    tablistAria: "Main sections",
+    navMainAria: "Main navigation",
     tabClock: "Clock",
     tabTemp: "Temperature",
     clockSectionAria: "Add a timezone",

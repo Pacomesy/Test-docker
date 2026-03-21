@@ -122,7 +122,13 @@ def test_list_timezones_limit_capped(client) -> None:
     assert len(r.json()["timezones"]) <= 500
 
 
-def test_index_page(client) -> None:
+def test_clock_page(client) -> None:
     r = client.get("/")
+    assert r.status_code == 200
+    assert "text/html" in r.headers.get("content-type", "")
+
+
+def test_meteo_page(client) -> None:
+    r = client.get("/meteo")
     assert r.status_code == 200
     assert "text/html" in r.headers.get("content-type", "")
