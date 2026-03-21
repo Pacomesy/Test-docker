@@ -1,8 +1,36 @@
-# Horloge multi-fuseaux (Python + Docker)
+# Horloge & météo (Python + Docker)
 
-Application web affichant l’heure courante pour plusieurs fuseaux IANA. Les mises à jour sont poussées en **temps réel** via **WebSocket** (aucun rechargement de page). Vous pouvez **ajouter ou retirer des tuiles** à la volée ; la configuration est **persistée** dans un volume Docker (`/data/tiles.json`) sans redémarrer le conteneur.
+Application web **FastAPI** avec interface statique (`index.html`) : **horloge multi-fuseaux** et **historique de température** (données externes).
 
-Le mode **HTTPS** est pris en charge en exposant des certificats dans le conteneur (voir ci-dessous).
+## Fonctionnalités
+
+### Onglet Horloge
+
+- Affichage de l’heure courante pour plusieurs **fuseaux IANA**.
+- Mises à jour en **temps réel** via **WebSocket** (`/ws`), sans rechargement de page.
+- **Ajout / suppression** de tuiles, **réordonnancement** par glisser-déposer.
+- Configuration **persistée** dans un volume Docker : `DATA_DIR/tiles.json` (souvent `/data/tiles.json`).
+
+### Onglet Température
+
+- **Lieu** : recherche par nom via l’API de **géocodage Open-Meteo** (appel navigateur → `geocoding-api.open-meteo.com`).
+- **Période** : deux dates (journées entières) ; récupération via l’**API archive** Open-Meteo (`archive-api.open-meteo.com`).
+- **Résolution** : horaire (`temperature_2m`) ou journalière (max / min).
+- **Graphique** : **Plotly.js** (CDN), avec zoom (molette, rectangle, barre d’outils) et double-clic pour réinitialiser les axes.
+
+Les appels Open-Meteo et le chargement de Plotly se font **depuis le navigateur** (aucun proxy côté serveur). Un accès Internet depuis le poste client est donc nécessaire pour cet onglet.
+
+### Autres
+
+- Le mode **HTTPS** est pris en charge en exposant des certificats dans le conteneur (voir ci-dessous).
+- **À propos** : versions applicatives, backend, image Docker, ainsi que les **composants front** déclarés côté API (Plotly.js, Open-Meteo, polices Google Fonts) — voir `GET /api/about`.
+
+### Langues (DE / FR / IT / EN)
+
+- Quatre boutons dans l’en-tête choisissent la langue de l’interface ; le choix est mémorisé dans **`localStorage`** (`appLocale`).
+- Les libellés, messages d’erreur côté page, tableau « À propos » et textes Plotly suivent la langue active. Les dates sur les **tuiles horloge** sont affichées au format **`dd.MM.yyyy HH:mm:ss`** (avec décalage fuseau si fourni).
+- Les requêtes **`fetch`** vers l’API applicative envoient l’en-tête **`X-App-Locale`** (`de`, `fr`, `it`, `en`) pour que les messages d’erreur HTTP (`detail`) soient dans la même langue.
+- Fichier des chaînes : [`app/static/locales.js`](app/static/locales.js) ; logique et montage dans [`app/static/index.html`](app/static/index.html).
 
 ## Prérequis
 
@@ -22,14 +50,14 @@ docker compose build
 Pour figer la version dans l’image Docker (voir section **Version** ci-dessous) :
 
 ```bash
-docker build --build-arg APP_VERSION=1.2.0 -t horloge:1.2.0 .
+docker build --build-arg APP_VERSION=1.2.0 -t horloge-meteo:1.2.0 .
 ```
 
 ## Version de l’application
 
 - **Code** : constante `__version__` dans [`app/version.py`](app/version.py) — point d’entrée pour les développements hors Docker.
 - **Runtime** : variable d’environnement `APP_VERSION` (prioritaire sur `app/version.py`). Dans le `Dockerfile`, `ARG APP_VERSION` est recopié dans `ENV APP_VERSION` et `DOCKER_IMAGE_VERSION` au build.
-- **Affichage** : le titre de la page affiche uniquement la version applicative (`GET /api/version`). Le bouton **À propos** ouvre une fenêtre avec les versions **Application**, **Interface (front-end)**, détail **Backend** (Python, FastAPI, Uvicorn) et **Docker (image)** (`GET /api/about`).
+- **Affichage** : le titre de la page affiche la version applicative (`GET /api/version`). Le bouton **À propos** ouvre une fenêtre avec les versions **Application**, **Interface (front-end)**, détail **Backend** (Python, FastAPI, Uvicorn), **Docker (image)**, et la clé **`components`** (Plotly.js, Open-Meteo, polices) — `GET /api/about`.
 - **OpenAPI** : la version est aussi exposée sur [`/docs`](http://localhost:8000/docs) (métadonnées FastAPI).
 
 ## Démarrage (HTTP)
@@ -81,17 +109,29 @@ En production, utilisez des certificats émis par une AC de confiance (Let’s E
 | `APP_VERSION`    | valeur de `app/version.py` | Version affichée (titre + À propos + OpenAPI) |
 | `DOCKER_IMAGE_VERSION` | souvent identique à `APP_VERSION` dans l’image | Libellé « Docker (image) » dans À propos ; surcharge possible au `docker run` |
 
-## API utiles (sans recharger la page)
+## API HTTP (backend)
+
+En appelant l’API hors navigateur, vous pouvez passer **`X-App-Locale: de`** (ou `fr`, `it`, `en`) pour les textes d’erreur renvoyés dans `detail`.
 
 - `GET /api/version` — `{"version": "…"}` (version applicative seule)
-- `GET /api/about` — détail des versions (app, front-end, backend, docker)
+- `GET /api/about` — versions app, front-end, backend (Python, FastAPI, Uvicorn), Docker, et `components` (Plotly.js, Open-Meteo, polices)
 - `GET /api/tiles` — liste des tuiles
 - `POST /api/tiles` — corps JSON `{"timezone":"Asia/Tokyo"}`
 - `PUT /api/tiles/order` — corps JSON `{"order":["id1","id2",…]}` (même ensemble d’IDs que les tuiles actuelles, nouvel ordre)
 - `DELETE /api/tiles/{id}` — supprime une tuile
 - `GET /api/timezones?q=paris` — recherche dans les fuseaux IANA
 
-L’interface permet de **réordonner les tuiles par glisser-déposer** ; l’ordre est enregistré dans `tiles.json` et synchronisé entre onglets via WebSocket.
+**WebSocket** : `GET /ws` (protocole WebSocket) — init + ticks horloge + synchronisation des tuiles entre clients.
+
+L’interface permet de **réordonner les tuiles par glisser-déposer** ; l’ordre est enregistré dans `tiles.json` et synchronisé entre onglets / navigateurs via WebSocket.
+
+## Dépendances externes (navigateur)
+
+| Ressource | Usage |
+|-----------|--------|
+| [Open-Meteo](https://open-meteo.com) | Géocodage et série historique de température (onglet Température) |
+| [Plotly.js](https://plotly.com/javascript/) | Graphique interactif (zoom, barre d’outils) |
+| [Google Fonts](https://fonts.google.com) | Outfit, JetBrains Mono |
 
 ## Exécution locale (sans Docker)
 
@@ -110,16 +150,22 @@ Sous Linux/macOS : `export DATA_DIR=./data` puis `mkdir -p data`.
 
 ```
 app/
-  main.py          # FastAPI, WebSocket, API tuiles
+  main.py          # FastAPI, WebSocket, API tuiles, page d’accueil
   version.py       # __version__ applicative
+  i18n_api.py      # Messages HTTP localisés (X-App-Locale)
   static/
-    index.html     # Interface tuiles + client WebSocket
+    index.html     # Onglets Horloge / Température, i18n, client WebSocket, Plotly + Open-Meteo
+    locales.js     # Chaînes DE / FR / IT / EN pour l’interface
 Dockerfile
 docker-compose.yml
 docker-entrypoint.sh
 requirements.txt
+README.md
+CAHIER_DES_CHARGES.md
 ```
 
 ## Dépannage
 
 - **`exec /docker-entrypoint.sh: no such file or directory`** sous Linux : fins de ligne CRLF sur `docker-entrypoint.sh`. Le `Dockerfile` applique un `sed` pour les normaliser au build ; le fichier [`.gitattributes`](.gitattributes) force les `*.sh` en LF.
+- **Onglet Température vide ou erreurs réseau** : vérifier que le navigateur peut joindre les domaines Open-Meteo et le CDN Plotly (pare-feu, politique réseau).
+- **Modifications d’interface non visibles** après `docker compose build` : reconstruire l’image (`docker compose build --no-cache`) ou s’assurer que le volume ne remplace pas `index.html` (ce projet ne monte pas le code source sur `app` par défaut — seul `/data` est en volume).

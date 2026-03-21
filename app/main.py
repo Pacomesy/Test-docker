@@ -10,12 +10,13 @@ from zoneinfo import ZoneInfo, available_timezones
 
 import fastapi as fastapi_mod
 import uvicorn as uvicorn_mod
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from app.i18n_api import UnknownTimezoneError, api_msg
 from app.version import __version__ as _package_version
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
@@ -34,7 +35,7 @@ def about_payload() -> dict:
             "fastapi": fastapi_mod.__version__,
             "uvicorn": uvicorn_mod.__version__,
         },
-        "docker": os.environ.get("DOCKER_IMAGE_VERSION") or "non définie",
+        "docker": os.environ.get("DOCKER_IMAGE_VERSION"),
         "components": {
             "plotly": "2.35.2 (CDN plot.ly)",
             "open_meteo": "Géocodage + archive — open-meteo.com",
@@ -82,7 +83,7 @@ def save_tiles(tiles: list[dict]) -> None:
 
 def validate_tz(name: str) -> str:
     if name not in available_timezones():
-        raise ValueError(f"Fuseau inconnu: {name}")
+        raise UnknownTimezoneError(name)
     return name
 
 
@@ -178,10 +179,13 @@ if STATIC_DIR.is_dir():
 
 
 @app.get("/")
-async def index_page():
+async def index_page(x_app_locale: str | None = Header(None, alias="X-App-Locale")):
     index_path = STATIC_DIR / "index.html"
     if not index_path.is_file():
-        raise HTTPException(status_code=404, detail="index.html manquant")
+        raise HTTPException(
+            status_code=404,
+            detail=api_msg(x_app_locale, "index_missing"),
+        )
     return FileResponse(index_path)
 
 
@@ -201,14 +205,23 @@ async def get_tiles():
 
 
 @app.post("/api/tiles")
-async def add_tile(body: TileIn):
+async def add_tile(
+    body: TileIn,
+    x_app_locale: str | None = Header(None, alias="X-App-Locale"),
+):
     tz = body.timezone
     try:
         tz = validate_tz(tz.strip())
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    except UnknownTimezoneError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=api_msg(x_app_locale, "unknown_tz", name=e.tz_name),
+        ) from e
     if any(t["timezone"] == tz for t in _tiles_state):
-        raise HTTPException(status_code=409, detail="Ce fuseau est déjà affiché")
+        raise HTTPException(
+            status_code=409,
+            detail=api_msg(x_app_locale, "duplicate_tile"),
+        )
     tile = {"id": str(uuid.uuid4()), "timezone": tz}
     _tiles_state.append(tile)
     save_tiles(_tiles_state)
@@ -217,25 +230,34 @@ async def add_tile(body: TileIn):
 
 
 @app.delete("/api/tiles/{tile_id}")
-async def remove_tile(tile_id: str):
+async def remove_tile(
+    tile_id: str,
+    x_app_locale: str | None = Header(None, alias="X-App-Locale"),
+):
     global _tiles_state
     before = len(_tiles_state)
     _tiles_state = [t for t in _tiles_state if t["id"] != tile_id]
     if len(_tiles_state) == before:
-        raise HTTPException(status_code=404, detail="Tuile introuvable")
+        raise HTTPException(
+            status_code=404,
+            detail=api_msg(x_app_locale, "tile_not_found"),
+        )
     save_tiles(_tiles_state)
     await manager.broadcast_json({"type": "tiles_updated", "tiles": list(_tiles_state)})
     return {"ok": True}
 
 
 @app.put("/api/tiles/order")
-async def reorder_tiles(body: TileOrderIn):
+async def reorder_tiles(
+    body: TileOrderIn,
+    x_app_locale: str | None = Header(None, alias="X-App-Locale"),
+):
     global _tiles_state
     current_ids = [t["id"] for t in _tiles_state]
     if len(body.order) != len(current_ids) or set(body.order) != set(current_ids):
         raise HTTPException(
             status_code=400,
-            detail="La liste 'order' doit contenir exactement les mêmes IDs que les tuiles actuelles.",
+            detail=api_msg(x_app_locale, "order_invalid"),
         )
     by_id = {t["id"]: t for t in _tiles_state}
     _tiles_state = [by_id[i] for i in body.order]
