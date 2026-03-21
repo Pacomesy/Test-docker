@@ -37,11 +37,37 @@
       gap: 1rem;
       justify-content: space-between;
     }
+    .header-left { display: flex; flex-direction: column; gap: 0.35rem; }
     h1 {
       margin: 0;
       font-size: 1.35rem;
       font-weight: 600;
       letter-spacing: -0.02em;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.5rem;
+    }
+    .version-badge {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: 0.02em;
+    }
+    .header-right {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .btn-secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      background: var(--surface);
+      border-color: var(--accent);
     }
     .status {
       font-size: 0.85rem;
@@ -68,6 +94,11 @@
       background: var(--surface);
       border-radius: 12px;
       border: 1px solid var(--border);
+    }
+    .hint-drag {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin: 0 0 0.75rem;
     }
     label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 0.35rem; }
     input[type="search"], select {
@@ -108,6 +139,14 @@
       border-radius: 12px;
       padding: 1.1rem;
       position: relative;
+      cursor: grab;
+      transition: outline 0.15s ease, opacity 0.15s ease;
+    }
+    .tile:active { cursor: grabbing; }
+    .tile.dragging { opacity: 0.55; }
+    .tile.drag-over {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
     }
     .tile h2 {
       margin: 0 0 0.5rem;
@@ -138,6 +177,7 @@
       background: transparent;
       color: var(--muted);
       border: 1px solid var(--border);
+      cursor: pointer;
     }
     .tile .remove:hover { color: var(--danger); border-color: var(--danger); }
     .empty {
@@ -146,14 +186,61 @@
       color: var(--muted);
       padding: 2rem;
     }
+    dialog.about-dialog {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0;
+      max-width: min(420px, 92vw);
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+    }
+    dialog.about-dialog::backdrop {
+      background: rgba(0, 0, 0, 0.55);
+    }
+    .about-inner { padding: 1.25rem 1.5rem 1.5rem; }
+    .about-dialog h2 {
+      margin: 0 0 1rem;
+      font-size: 1.15rem;
+    }
+    .about-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    .about-table th,
+    .about-table td {
+      text-align: left;
+      padding: 0.4rem 0.5rem 0.4rem 0;
+      vertical-align: top;
+      border-bottom: 1px solid var(--border);
+    }
+    .about-table th {
+      color: var(--muted);
+      font-weight: 600;
+      width: 42%;
+    }
+    .about-dialog .about-actions {
+      margin-top: 1.25rem;
+      display: flex;
+      justify-content: flex-end;
+    }
   </style>
 </head>
 <body>
   <header>
-    <h1>Horloge multi-fuseaux</h1>
-    <div class="status">
-      <span class="dot" id="wsDot" aria-hidden="true"></span>
-      <span id="wsLabel">Connexion…</span>
+    <div class="header-left">
+      <h1>
+        Horloge multi-fuseaux
+        <span class="version-badge" id="appVersion" aria-label="Version application"></span>
+      </h1>
+    </div>
+    <div class="header-right">
+      <button type="button" id="btnAbout" class="btn-secondary">À propos</button>
+      <div class="status">
+        <span class="dot" id="wsDot" aria-hidden="true"></span>
+        <span id="wsLabel">Connexion…</span>
+      </div>
     </div>
   </header>
   <main>
@@ -168,8 +255,22 @@
       </div>
       <button type="button" id="btnAdd">Ajouter la tuile</button>
     </section>
+    <p class="hint-drag">Glissez-déposez les tuiles pour changer leur ordre (enregistré automatiquement).</p>
     <div class="grid" id="grid" role="list"></div>
   </main>
+
+  <dialog class="about-dialog" id="aboutDialog" aria-labelledby="aboutTitle">
+    <div class="about-inner">
+      <h2 id="aboutTitle">À propos</h2>
+      <table class="about-table" id="aboutTable">
+        <tbody id="aboutBody"></tbody>
+      </table>
+      <div class="about-actions">
+        <button type="button" id="aboutClose">Fermer</button>
+      </div>
+    </div>
+  </dialog>
+
   <script>
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${proto}//${window.location.host}/ws`;
@@ -179,16 +280,62 @@
     const tzSelect = document.getElementById("tzSelect");
     const tzSearch = document.getElementById("tzSearch");
     const btnAdd = document.getElementById("btnAdd");
+    const appVersionEl = document.getElementById("appVersion");
+    const btnAbout = document.getElementById("btnAbout");
+    const aboutDialog = document.getElementById("aboutDialog");
+    const aboutBody = document.getElementById("aboutBody");
+    const aboutClose = document.getElementById("aboutClose");
 
     let tiles = [];
     let timesByTz = new Map();
     let allZones = [];
     let ws;
+    let dragSourceId = null;
 
     function setWsStatus(ok, text) {
       wsDot.classList.toggle("ok", ok);
       wsLabel.textContent = text;
     }
+
+    async function loadAppVersion() {
+      try {
+        const r = await fetch("/api/version");
+        const d = await r.json();
+        appVersionEl.textContent = d.version ? `v${d.version}` : "";
+      } catch {
+        appVersionEl.textContent = "";
+      }
+    }
+
+    function renderAboutRows(data) {
+      const rows = [
+        ["Application", data.app],
+        ["Interface (front-end)", data.frontend],
+        ["Backend — Python", data.backend?.python],
+        ["Backend — FastAPI", data.backend?.fastapi],
+        ["Backend — Uvicorn", data.backend?.uvicorn],
+        ["Docker (image)", data.docker],
+      ];
+      aboutBody.innerHTML = rows
+        .map(
+          ([k, v]) =>
+            `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(String(v ?? "—"))}</td></tr>`
+        )
+        .join("");
+    }
+
+    btnAbout.addEventListener("click", async () => {
+      try {
+        const r = await fetch("/api/about");
+        const d = await r.json();
+        renderAboutRows(d);
+        aboutDialog.showModal();
+      } catch (e) {
+        alert("Impossible de charger les informations : " + e);
+      }
+    });
+
+    aboutClose.addEventListener("click", () => aboutDialog.close());
 
     function render() {
       grid.innerHTML = "";
@@ -204,13 +351,20 @@
         const el = document.createElement("article");
         el.className = "tile";
         el.setAttribute("role", "listitem");
+        el.draggable = true;
+        el.dataset.id = t.id;
         el.innerHTML = `
           <h2>${escapeHtml(t.timezone)}</h2>
           <div class="time">${escapeHtml(info.time || "—")}</div>
           <div class="date">${escapeHtml([info.date, info.offset].filter(Boolean).join(" "))}</div>
-          <button type="button" class="remove" data-id="${escapeHtml(t.id)}" title="Retirer">×</button>
+          <button type="button" class="remove" draggable="false" data-id="${escapeHtml(t.id)}" title="Retirer">×</button>
         `;
-        el.querySelector(".remove").addEventListener("click", () => removeTile(t.id));
+        const rm = el.querySelector(".remove");
+        rm.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          removeTile(t.id);
+        });
+        rm.addEventListener("mousedown", (ev) => ev.stopPropagation());
         grid.appendChild(el);
       }
     }
@@ -248,6 +402,81 @@
         }
       };
     }
+
+    grid.addEventListener("dragstart", (e) => {
+      const tile = e.target.closest(".tile");
+      if (!tile || e.target.closest(".remove")) {
+        e.preventDefault();
+        return;
+      }
+      dragSourceId = tile.dataset.id;
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", dragSourceId);
+      tile.classList.add("dragging");
+    });
+
+    grid.addEventListener("dragend", (e) => {
+      grid.querySelectorAll(".tile.dragging, .tile.drag-over").forEach((el) => {
+        el.classList.remove("dragging", "drag-over");
+      });
+      dragSourceId = null;
+    });
+
+    grid.addEventListener("dragover", (e) => {
+      const tile = e.target.closest(".tile");
+      if (!tile || !dragSourceId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+    });
+
+    grid.addEventListener("dragenter", (e) => {
+      const tile = e.target.closest(".tile");
+      if (!tile || !dragSourceId || tile.dataset.id === dragSourceId) return;
+      tile.classList.add("drag-over");
+    });
+
+    grid.addEventListener("dragleave", (e) => {
+      const tile = e.target.closest(".tile");
+      if (tile && e.relatedTarget && !tile.contains(e.relatedTarget)) {
+        tile.classList.remove("drag-over");
+      }
+    });
+
+    grid.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      const targetTile = e.target.closest(".tile");
+      grid.querySelectorAll(".tile.drag-over").forEach((el) => el.classList.remove("drag-over"));
+      if (!targetTile || !dragSourceId) return;
+      const targetId = targetTile.dataset.id;
+      const sourceId = dragSourceId;
+      if (sourceId === targetId) return;
+      const from = tiles.findIndex((t) => t.id === sourceId);
+      const to = tiles.findIndex((t) => t.id === targetId);
+      if (from < 0 || to < 0) return;
+      const prev = tiles.map((t) => ({ ...t }));
+      const next = [...tiles];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      tiles = next;
+      render();
+      try {
+        const r = await fetch("/api/tiles/order", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ order: next.map((t) => t.id) }),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          tiles = prev;
+          render();
+          alert(err.detail || r.statusText);
+        }
+      } catch (err) {
+        tiles = prev;
+        render();
+        alert(String(err));
+      }
+    });
 
     async function loadTimezones() {
       const r = await fetch("/api/timezones?limit=500");
@@ -305,6 +534,7 @@
       }
     }
 
+    loadAppVersion();
     loadTimezones();
     connectWs();
   </script>

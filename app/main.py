@@ -1,21 +1,41 @@
 import asyncio
 import json
 import os
+import sys
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo, available_timezones
 
+import fastapi as fastapi_mod
+import uvicorn as uvicorn_mod
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from app.version import __version__ as _package_version
+
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 TILES_FILE = DATA_DIR / "tiles.json"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+APP_VERSION = os.environ.get("APP_VERSION", _package_version)
+
+
+def about_payload() -> dict:
+    return {
+        "app": APP_VERSION,
+        "frontend": APP_VERSION,
+        "backend": {
+            "python": sys.version.split()[0],
+            "fastapi": fastapi_mod.__version__,
+            "uvicorn": uvicorn_mod.__version__,
+        },
+        "docker": os.environ.get("DOCKER_IMAGE_VERSION") or "non définie",
+    }
 
 DEFAULT_TILES = [
     {"id": str(uuid.uuid4()), "timezone": "Europe/Paris"},
@@ -104,6 +124,10 @@ class TileIn(BaseModel):
     timezone: str = Field(..., min_length=1, description="Identifiant IANA, ex. Europe/Paris")
 
 
+class TileOrderIn(BaseModel):
+    order: list[str] = Field(..., min_length=1, description="IDs des tuiles dans le nouvel ordre")
+
+
 manager = ConnectionManager()
 _tiles_state: list[dict] = []
 _tick_task: asyncio.Task | None = None
@@ -131,7 +155,11 @@ async def lifespan(app: FastAPI):
             pass
 
 
-app = FastAPI(title="Horloge multi-fuseaux", lifespan=lifespan)
+app = FastAPI(
+    title="Horloge multi-fuseaux",
+    version=APP_VERSION,
+    lifespan=lifespan,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -150,6 +178,16 @@ async def index_page():
     if not index_path.is_file():
         raise HTTPException(status_code=404, detail="index.html manquant")
     return FileResponse(index_path)
+
+
+@app.get("/api/version")
+async def get_version():
+    return {"version": APP_VERSION}
+
+
+@app.get("/api/about")
+async def get_about():
+    return about_payload()
 
 
 @app.get("/api/tiles")
@@ -183,6 +221,22 @@ async def remove_tile(tile_id: str):
     save_tiles(_tiles_state)
     await manager.broadcast_json({"type": "tiles_updated", "tiles": list(_tiles_state)})
     return {"ok": True}
+
+
+@app.put("/api/tiles/order")
+async def reorder_tiles(body: TileOrderIn):
+    global _tiles_state
+    current_ids = [t["id"] for t in _tiles_state]
+    if len(body.order) != len(current_ids) or set(body.order) != set(current_ids):
+        raise HTTPException(
+            status_code=400,
+            detail="La liste 'order' doit contenir exactement les mêmes IDs que les tuiles actuelles.",
+        )
+    by_id = {t["id"]: t for t in _tiles_state}
+    _tiles_state = [by_id[i] for i in body.order]
+    save_tiles(_tiles_state)
+    await manager.broadcast_json({"type": "tiles_updated", "tiles": list(_tiles_state)})
+    return {"tiles": list(_tiles_state)}
 
 
 @app.get("/api/timezones")
