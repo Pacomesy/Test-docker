@@ -39,6 +39,17 @@ Les appels Open-Meteo et le chargement de Plotly se font **depuis le navigateur*
 
 Sous Windows, [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/) convient.
 
+## Tests (pytest)
+
+En local, avec Python 3.12+ :
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+Les tests isolent `DATA_DIR` dans un répertoire temporaire et neutralisent la boucle `tick` WebSocket pour des exécutions rapides et déterministes.
+
 ## Installation et build (Docker)
 
 À la racine du projet :
