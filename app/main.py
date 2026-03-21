@@ -35,6 +35,11 @@ def about_payload() -> dict:
             "uvicorn": uvicorn_mod.__version__,
         },
         "docker": os.environ.get("DOCKER_IMAGE_VERSION") or "non définie",
+        "components": {
+            "chart_js": "4.4.1 (CDN jsDelivr)",
+            "open_meteo": "Géocodage + archive — open-meteo.com",
+            "fonts": "Google Fonts — Outfit, JetBrains Mono",
+        },
     }
 
 DEFAULT_TILES = [
