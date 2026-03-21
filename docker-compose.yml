@@ -1,0 +1,28 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - app_data:/data
+
+  # Profil HTTPS : certificats dans ./certs (voir README)
+  app-https:
+    profiles:
+      - https
+    build: .
+    ports:
+      - "8443:8443"
+    environment:
+      DATA_DIR: /data
+      UVICORN_PORT: "8443"
+      SSL_CERTFILE: /certs/cert.pem
+      SSL_KEYFILE: /certs/key.pem
+    volumes:
+      - app_data:/data
+      - ./certs:/certs:ro
+
+volumes:
+  app_data:

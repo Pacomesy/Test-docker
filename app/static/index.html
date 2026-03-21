@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Horloge multi-fuseaux</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --border: #2d3a4d;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --accent: #3d9cf5;
+      --accent-dim: #2563a8;
+      --danger: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Outfit", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      background-image:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(61, 156, 245, 0.15), transparent);
+    }
+    header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 1rem;
+      justify-content: space-between;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.35rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .status {
+      font-size: 0.85rem;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--danger);
+    }
+    .dot.ok { background: #4ade80; }
+    main { padding: 1.5rem; max-width: 1200px; margin: 0 auto; }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: flex-end;
+      margin-bottom: 1.5rem;
+      padding: 1rem;
+      background: var(--surface);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 0.35rem; }
+    input[type="search"], select {
+      font-family: inherit;
+      font-size: 0.95rem;
+      padding: 0.5rem 0.75rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      min-width: 220px;
+    }
+    input:focus, select:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+    button {
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 0.55rem 1rem;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      background: var(--accent);
+      color: #fff;
+    }
+    button:hover { background: var(--accent-dim); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 1rem;
+    }
+    .tile {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.1rem;
+      position: relative;
+    }
+    .tile h2 {
+      margin: 0 0 0.5rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding-right: 2rem;
+    }
+    .tile .time {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 1.75rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .tile .date { font-size: 0.85rem; color: var(--muted); margin-top: 0.35rem; }
+    .tile .remove {
+      position: absolute;
+      top: 0.65rem;
+      right: 0.65rem;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border-radius: 6px;
+      font-size: 1rem;
+      line-height: 1;
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .tile .remove:hover { color: var(--danger); border-color: var(--danger); }
+    .empty {
+      grid-column: 1 / -1;
+      text-align: center;
+      color: var(--muted);
+      padding: 2rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Horloge multi-fuseaux</h1>
+    <div class="status">
+      <span class="dot" id="wsDot" aria-hidden="true"></span>
+      <span id="wsLabel">Connexion…</span>
+    </div>
+  </header>
+  <main>
+    <section class="controls" aria-label="Ajouter un fuseau">
+      <div>
+        <label for="tzSearch">Rechercher un fuseau IANA</label>
+        <input type="search" id="tzSearch" placeholder="ex. Tokyo, Paris…" autocomplete="off" />
+      </div>
+      <div>
+        <label for="tzSelect">Fuseau horaire</label>
+        <select id="tzSelect"></select>
+      </div>
+      <button type="button" id="btnAdd">Ajouter la tuile</button>
+    </section>
+    <div class="grid" id="grid" role="list"></div>
+  </main>
+  <script>
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${proto}//${window.location.host}/ws`;
+    const grid = document.getElementById("grid");
+    const wsDot = document.getElementById("wsDot");
+    const wsLabel = document.getElementById("wsLabel");
+    const tzSelect = document.getElementById("tzSelect");
+    const tzSearch = document.getElementById("tzSearch");
+    const btnAdd = document.getElementById("btnAdd");
+
+    let tiles = [];
+    let timesByTz = new Map();
+    let allZones = [];
+    let ws;
+
+    function setWsStatus(ok, text) {
+      wsDot.classList.toggle("ok", ok);
+      wsLabel.textContent = text;
+    }
+
+    function render() {
+      grid.innerHTML = "";
+      if (!tiles.length) {
+        const p = document.createElement("p");
+        p.className = "empty";
+        p.textContent = "Aucune tuile. Ajoutez un fuseau ci-dessus.";
+        grid.appendChild(p);
+        return;
+      }
+      for (const t of tiles) {
+        const info = timesByTz.get(t.timezone) || {};
+        const el = document.createElement("article");
+        el.className = "tile";
+        el.setAttribute("role", "listitem");
+        el.innerHTML = `
+          <h2>${escapeHtml(t.timezone)}</h2>
+          <div class="time">${escapeHtml(info.time || "—")}</div>
+          <div class="date">${escapeHtml([info.date, info.offset].filter(Boolean).join(" "))}</div>
+          <button type="button" class="remove" data-id="${escapeHtml(t.id)}" title="Retirer">×</button>
+        `;
+        el.querySelector(".remove").addEventListener("click", () => removeTile(t.id));
+        grid.appendChild(el);
+      }
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function applyTimes(times) {
+      timesByTz.clear();
+      for (const x of times || []) {
+        timesByTz.set(x.timezone, x);
+      }
+      render();
+    }
+
+    function connectWs() {
+      ws = new WebSocket(wsUrl);
+      ws.onopen = () => setWsStatus(true, "Temps réel actif");
+      ws.onclose = () => {
+        setWsStatus(false, "Déconnecté — reconnexion…");
+        setTimeout(connectWs, 2000);
+      };
+      ws.onerror = () => setWsStatus(false, "Erreur réseau");
+      ws.onmessage = (ev) => {
+        const msg = JSON.parse(ev.data);
+        if (msg.type === "init" || msg.type === "tick") {
+          tiles = msg.tiles || tiles;
+          applyTimes(msg.times);
+        } else if (msg.type === "tiles_updated") {
+          tiles = msg.tiles || [];
+          render();
+        }
+      };
+    }
+
+    async function loadTimezones() {
+      const r = await fetch("/api/timezones?limit=500");
+      const data = await r.json();
+      allZones = data.timezones || [];
+      filterSelect();
+    }
+
+    function filterSelect() {
+      const q = (tzSearch.value || "").toLowerCase();
+      const filtered = q
+        ? allZones.filter((z) => z.toLowerCase().includes(q))
+        : allZones.slice(0, 150);
+      tzSelect.innerHTML = "";
+      for (const z of filtered.slice(0, 200)) {
+        const opt = document.createElement("option");
+        opt.value = z;
+        opt.textContent = z;
+        tzSelect.appendChild(opt);
+      }
+      if (!tzSelect.options.length) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "Aucun résultat";
+        tzSelect.appendChild(opt);
+      }
+    }
+
+    tzSearch.addEventListener("input", filterSelect);
+
+    btnAdd.addEventListener("click", async () => {
+      const timezone = tzSelect.value;
+      if (!timezone) return;
+      btnAdd.disabled = true;
+      try {
+        const r = await fetch("/api/tiles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ timezone }),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          alert(err.detail || r.statusText);
+        }
+      } finally {
+        btnAdd.disabled = false;
+      }
+    });
+
+    async function removeTile(id) {
+      const r = await fetch(`/api/tiles/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        alert(err.detail || r.statusText);
+      }
+    }
+
+    loadTimezones();
+    connectWs();
+  </script>
+</body>
+</html>
