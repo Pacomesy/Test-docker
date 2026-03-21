@@ -170,7 +170,10 @@
       min-height: 320px;
       position: relative;
     }
-    .temp-chart-wrap canvas { max-height: 420px; }
+    .temp-chart-wrap #tempPlot {
+      width: 100%;
+      min-height: 400px;
+    }
     .temp-error {
       margin: 0.75rem 0 0;
       font-size: 0.9rem;
@@ -181,6 +184,11 @@
       margin: 0.5rem 0 0;
       font-size: 0.85rem;
       color: #fbbf24;
+    }
+    .temp-plot-hint {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin: 0 0 0.5rem;
     }
     .controls {
       display: flex;
@@ -392,7 +400,8 @@
       <p class="selected-place" id="selectedPlaceLabel"></p>
       <p class="temp-warn" id="tempWarn" hidden></p>
       <div class="temp-chart-wrap">
-        <canvas id="tempChart" aria-label="Graphique de température"></canvas>
+        <p class="temp-plot-hint" id="tempPlotHint" hidden>Zoom : <strong>molette</strong> sur le graphique, <strong>glisser un rectangle</strong> sur la zone, ou icônes <strong>+ / −</strong> de la barre d’outils. <strong>Double-clic</strong> : réinitialiser les axes.</p>
+        <div id="tempPlot" aria-label="Graphique de température"></div>
       </div>
       <p class="temp-error" id="tempError" role="alert"></p>
     </div>
@@ -410,7 +419,7 @@
     </div>
   </dialog>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
   <script>
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${proto}//${window.location.host}/ws`;
@@ -437,7 +446,8 @@
     const dateEnd = document.getElementById("dateEnd");
     const resSelect = document.getElementById("resSelect");
     const btnLoadChart = document.getElementById("btnLoadChart");
-    const tempChartCanvas = document.getElementById("tempChart");
+    const tempPlot = document.getElementById("tempPlot");
+    const tempPlotHint = document.getElementById("tempPlotHint");
     const tempError = document.getElementById("tempError");
     const tempWarn = document.getElementById("tempWarn");
 
@@ -449,8 +459,47 @@
     let ws;
     let dragSourceId = null;
     let selectedPlace = null;
-    let tempChartInstance = null;
     let geoHits = [];
+
+    const plotlyConfig = {
+      responsive: true,
+      scrollZoom: true,
+      displayModeBar: true,
+      displaylogo: false,
+      showAxisDragHandles: true,
+      showAxisRangeEntryBoxes: false,
+      modeBarButtonsToRemove: ["lasso2d", "select2d"],
+    };
+
+    function plotlyBaseLayout(titleText) {
+      return {
+        paper_bgcolor: "rgba(0,0,0,0)",
+        plot_bgcolor: "#0f1419",
+        font: { color: "#e7ecf3", family: "Outfit, system-ui, sans-serif", size: 12 },
+        title: { text: titleText, font: { size: 15 } },
+        xaxis: {
+          type: "date",
+          gridcolor: "#2d3a4d",
+          zerolinecolor: "#2d3a4d",
+          linecolor: "#2d3a4d",
+          tickfont: { color: "#8b9cb3" },
+        },
+        yaxis: {
+          title: "°C",
+          gridcolor: "#2d3a4d",
+          zerolinecolor: "#2d3a4d",
+          linecolor: "#2d3a4d",
+          tickfont: { color: "#8b9cb3" },
+        },
+        legend: {
+          font: { color: "#8b9cb3" },
+          bgcolor: "rgba(0,0,0,0)",
+        },
+        margin: { t: 56, r: 24, b: 72, l: 56 },
+        hovermode: "x unified",
+        dragmode: "zoom",
+      };
+    }
 
     function setWsStatus(ok, text) {
       wsDot.classList.toggle("ok", ok);
@@ -477,7 +526,7 @@
         ["Docker (image)", data.docker],
       ];
       const c = data.components || {};
-      if (c.chart_js) rows.push(["Graphiques — Chart.js", c.chart_js]);
+      if (c.plotly) rows.push(["Graphiques — Plotly.js", c.plotly]);
       if (c.open_meteo) rows.push(["Données météo — Open-Meteo", c.open_meteo]);
       if (c.fonts) rows.push(["Polices", c.fonts]);
       aboutBody.innerHTML = rows
@@ -520,18 +569,6 @@
       const a = new Date(`${startStr}T12:00:00`);
       const b = new Date(`${endStr}T12:00:00`);
       return Math.floor((b - a) / 86400000) + 1;
-    }
-
-    function formatHourlyLabel(iso) {
-      if (!iso) return "";
-      const d = new Date(iso);
-      if (Number.isNaN(d.getTime())) return iso;
-      return d.toLocaleString("fr-FR", {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
     }
 
     function updateSelectedPlaceLabel() {
@@ -607,8 +644,8 @@
       tempWarn.hidden = true;
       tempWarn.textContent = "";
 
-      if (typeof Chart === "undefined") {
-        tempError.textContent = "Chart.js n’est pas chargé.";
+      if (typeof Plotly === "undefined") {
+        tempError.textContent = "Plotly.js n’est pas chargé.";
         return;
       }
       if (!selectedPlace) {
@@ -652,39 +689,12 @@
           throw new Error(data.reason || "Erreur Open-Meteo.");
         }
 
-        if (tempChartInstance) {
-          tempChartInstance.destroy();
-          tempChartInstance = null;
+        if (tempPlot.querySelector(".js-plotly-plot")) {
+          Plotly.purge(tempPlot);
         }
+        tempPlotHint.hidden = true;
 
-        const chartTextColor = "#8b9cb3";
-        const chartGridColor = "#2d3a4d";
-        const titleColor = "#e7ecf3";
-        const commonOptions = {
-          responsive: true,
-          maintainAspectRatio: true,
-          aspectRatio: 2,
-          plugins: {
-            legend: { labels: { color: chartTextColor } },
-            title: {
-              display: true,
-              text: `Température — ${selectedPlace.label}`,
-              color: titleColor,
-              font: { size: 14 },
-            },
-          },
-          scales: {
-            x: {
-              ticks: { color: chartTextColor, maxRotation: res === "hour" ? 45 : 0 },
-              grid: { color: chartGridColor },
-            },
-            y: {
-              title: { display: true, text: "°C", color: chartTextColor },
-              ticks: { color: chartTextColor },
-              grid: { color: chartGridColor },
-            },
-          },
-        };
+        const titleText = `Température — ${selectedPlace.label}`;
 
         if (res === "hour") {
           const times = data.hourly?.time || [];
@@ -693,25 +703,21 @@
             tempError.textContent = "Aucune donnée horaire pour cette période.";
             return;
           }
-          const labels = times.map(formatHourlyLabel);
-          tempChartInstance = new Chart(tempChartCanvas, {
-            type: "line",
-            data: {
-              labels,
-              datasets: [
-                {
-                  label: "Température (°C)",
-                  data: temps,
-                  borderColor: "#3d9cf5",
-                  backgroundColor: "rgba(61, 156, 245, 0.15)",
-                  fill: true,
-                  tension: 0.15,
-                  pointRadius: 0,
-                },
-              ],
+          const traces = [
+            {
+              x: times,
+              y: temps,
+              type: "scatter",
+              mode: "lines",
+              name: "Température (°C)",
+              line: { color: "#3d9cf5", width: 2, shape: "spline" },
+              fill: "tozeroy",
+              fillcolor: "rgba(61, 156, 245, 0.12)",
+              hovertemplate: "%{x|%d/%m %H:%M}<br>%{y:.1f} °C<extra></extra>",
             },
-            options: commonOptions,
-          });
+          ];
+          const layout = plotlyBaseLayout(titleText);
+          await Plotly.newPlot(tempPlot, traces, layout, plotlyConfig);
         } else {
           const times = data.daily?.time || [];
           const tmax = data.daily?.temperature_2m_max || [];
@@ -720,32 +726,32 @@
             tempError.textContent = "Aucune donnée journalière pour cette période.";
             return;
           }
-          tempChartInstance = new Chart(tempChartCanvas, {
-            type: "line",
-            data: {
-              labels: times,
-              datasets: [
-                {
-                  label: "Max (°C)",
-                  data: tmax,
-                  borderColor: "#f87171",
-                  backgroundColor: "rgba(248, 113, 113, 0.08)",
-                  tension: 0.2,
-                  pointRadius: 2,
-                },
-                {
-                  label: "Min (°C)",
-                  data: tmin,
-                  borderColor: "#3d9cf5",
-                  backgroundColor: "rgba(61, 156, 245, 0.08)",
-                  tension: 0.2,
-                  pointRadius: 2,
-                },
-              ],
+          const traces = [
+            {
+              x: times,
+              y: tmax,
+              type: "scatter",
+              mode: "lines+markers",
+              name: "Max (°C)",
+              line: { color: "#f87171", width: 2, shape: "spline" },
+              marker: { size: 5, color: "#f87171" },
+              hovertemplate: "%{x}<br>Max : %{y:.1f} °C<extra></extra>",
             },
-            options: commonOptions,
-          });
+            {
+              x: times,
+              y: tmin,
+              type: "scatter",
+              mode: "lines+markers",
+              name: "Min (°C)",
+              line: { color: "#3d9cf5", width: 2, shape: "spline" },
+              marker: { size: 5, color: "#3d9cf5" },
+              hovertemplate: "%{x}<br>Min : %{y:.1f} °C<extra></extra>",
+            },
+          ];
+          const layout = plotlyBaseLayout(titleText);
+          await Plotly.newPlot(tempPlot, traces, layout, plotlyConfig);
         }
+        tempPlotHint.hidden = false;
       } catch (e) {
         tempError.textContent = e instanceof Error ? e.message : String(e);
       } finally {
