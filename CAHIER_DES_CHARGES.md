@@ -2,9 +2,9 @@
 
 | Document | Version | Date |
 |----------|---------|------|
-| Cahier des charges | 1.0 | [À compléter : date] |
+| Cahier des charges | 1.1 | mars 2026 |
 
-**Référence projet :** [À compléter : nom du produit ou du projet]
+**Référence projet :** application web **Horloge & météo** — horloge multi-fuseaux (persistée) et visualisation d’historique de température (Open-Meteo, graphique Plotly.js côté client).
 
 ---
 
@@ -33,15 +33,15 @@ Il sert de référence commune entre la maîtrise d’ouvrage, la maîtrise d’
 
 ### 2.1 Contexte
 
-[À compléter : décrire le contexte métier ou technique — problème à résoudre, existant à remplacer ou à compléter, utilisateurs cibles.]
+Application de démonstration / outil léger : consultation simultanée de l’heure dans plusieurs fuseaux horaires, avec persistance locale des tuiles, et consultation optionnelle d’un historique de température pour un lieu géocodé. Livraison **conteneurisée** pour installation reproductible.
 
 ### 2.2 Objectifs mesurables
 
 | ID | Objectif | Indicateur cible |
 |----|----------|------------------|
-| O-01 | [À compléter] | [À compléter : ex. délai de réponse, taux de succès] |
+| O-01 | Fournir une interface web fonctionnelle (horloge + température) | Parcours utilisateur documenté dans le README ; APIs et WebSocket opérationnels |
 | O-02 | Déployer l’application de façon reproductible via conteneur | Build et run documentés et reproductibles sur environnement cible |
-| O-03 | [À compléter] | [À compléter] |
+| O-03 | Traçabilité des versions (app, stack, composants front) | Endpoint `/api/about` et dialogue « À propos » à jour |
 
 ### 2.3 Parties prenantes
 
@@ -77,16 +77,17 @@ Les exigences ci-dessous sont numérotées pour le suivi de recette. Les formula
 
 | ID | Description | Priorité |
 |----|-------------|----------|
-| RF-01 | L’application expose une **API HTTP** (REST ou équivalent) pour [À compléter : ressources / opérations]. | [Majeur / Souhaitable] |
-| RF-02 | L’application propose une **interface en ligne de commande (CLI)** pour [À compléter : tâches]. | [Majeur / Souhaitable / Hors périmètre] |
-| RF-03 | L’application exécute des **traitements batch** ou planifiés pour [À compléter]. | [À compléter] |
-| RF-04 | L’application fournit une **interface web** pour [À compléter]. | [À compléter] |
-| RF-05 | [À compléter : user story ou exigence supplémentaire] | [À compléter] |
+| RF-01 | L’application expose une **API HTTP** (REST) pour la version, les métadonnées « à propos », la liste / création / suppression / ordre des tuiles fuseaux, et la recherche de fuseaux IANA. | Majeur |
+| RF-02 | L’application expose un **WebSocket** `/ws` pour pousser l’heure et les mises à jour de tuiles en temps réel. | Majeur |
+| RF-03 | **Hors périmètre** actuel : CLI dédiée et traitements batch planifiés (l’app est un service web continu). | Hors périmètre |
+| RF-04 | **Interface web** à onglets : (1) **Horloge** — tuiles par fuseau, ajout/suppression, glisser-déposer pour l’ordre ; (2) **Température** — choix de lieu (géocodage Open-Meteo), plage de dates, résolution horaire ou journalière, graphique Plotly.js avec zoom. | Majeur |
+| RF-05 | Persistance des tuiles horloge dans un fichier JSON sous `DATA_DIR` (ex. volume Docker). | Majeur |
 
-**User stories (exemples à adapter) :**
+**User stories (référence recette) :**
 
-- En tant qu’**utilisateur API**, je veux [À compléter] afin de [À compléter].
-- En tant qu’**administrateur**, je veux configurer l’application via variables d’environnement afin de l’adapter à chaque environnement sans reconstruire l’image pour les secrets injectés au runtime.
+- En tant qu’**utilisateur**, je veux voir l’heure de plusieurs villes/fuseaux et les réorganiser afin de suivre des collaborateurs ou des marchés dans le monde.
+- En tant qu’**utilisateur**, je veux afficher un historique de température pour un lieu sur une plage de dates afin de comparer des périodes (données via Open-Meteo depuis le navigateur).
+- En tant qu’**exploitant**, je veux configurer port, TLS et répertoire de données via variables d’environnement afin d’adapter l’instance sans modifier le code.
 
 ---
 
@@ -95,7 +96,7 @@ Les exigences ci-dessous sont numérotées pour le suivi de recette. Les formula
 | ID | Domaine | Exigence |
 |----|---------|----------|
 | RNF-01 | Disponibilité | [À compléter : ex. objectif 99 % mensuel, fenêtres de maintenance] |
-| RNF-02 | Performances | [À compléter : ex. latence p95, débit, taille max des requêtes] |
+| RNF-02 | Performances | Service léger ; latence principale liée au réseau pour l’onglet Température (APIs externes). Pas d’objectif chiffré imposé dans ce document. |
 | RNF-03 | Sécurité | Secrets fournis au runtime (variables d’environnement, secrets orchestrateur) — **aucun secret en clair dans l’image** sauf justification documentée. |
 | RNF-04 | Sécurité | L’utilisateur par défaut dans le conteneur n’est **pas** `root` lorsque c’est compatible avec les besoins d’écriture sur le système de fichiers. |
 | RNF-05 | Observabilité | Logs sur **stdout** / **stderr** ; format et niveau de détail [À compléter : ex. JSON structuré, niveau INFO en prod]. |
@@ -108,19 +109,20 @@ Les exigences ci-dessous sont numérotées pour le suivi de recette. Les formula
 
 | Élément | Spécification |
 |---------|----------------|
-| Langage | Python [À compléter : ex. 3.12] |
-| Dépendances | Fichier `requirements.txt`, `pyproject.toml` / Poetry, ou équivalent — à figer pour la reproductibilité des builds |
-| Docker | `Dockerfile` versionné ; option **multi-stage** pour réduire la taille de l’image finale |
-| Orchestration locale | `docker-compose.yml` optionnel pour dev et/ou déploiement simplifié |
-| Configuration | Variables d’environnement documentées ; valeurs par défaut sûres pour le développement |
-| Ports | [À compléter : ex. 8000 pour HTTP] — documentés dans le README |
-| Registre d’images | [À compléter : Docker Hub, registre privé, GHCR, etc.] |
+| Langage | Python **3.12** (image de base `python:3.12-slim`) |
+| Framework | **FastAPI** + **Uvicorn** ; interface statique servie depuis `app/static/index.html` |
+| Dépendances | `requirements.txt` figé pour la reproductibilité des builds |
+| Docker | `Dockerfile` versionné ; utilisateur non-root `appuser` ; entrée `docker-entrypoint.sh` |
+| Orchestration locale | `docker-compose.yml` — service HTTP (8000), profil optionnel HTTPS (8443) |
+| Configuration | Variables d’environnement documentées dans le README (`DATA_DIR`, `APP_VERSION`, TLS, port) |
+| Ports | **8000** (HTTP), **8443** (HTTPS via compose profil) — documentés dans le README |
+| Registre d’images | [À compléter selon organisation : Docker Hub, GHCR, registre privé, etc.] |
 
 ---
 
 ## 7. Architecture cible (schéma)
 
-Vue logique du cycle développement → image → exécution. Le framework web ou la bibliothèque applicative reste à choisir selon les RF.
+Vue logique du cycle développement → image → exécution. Le navigateur peut appeler des **APIs publiques** pour l’onglet Température (hors conteneur).
 
 ```mermaid
 flowchart LR
@@ -143,6 +145,21 @@ flowchart LR
   Container --> Net
 ```
 
+```mermaid
+flowchart LR
+  Browser[Navigateur]
+  App[FastAPI_conteneur]
+  WS[WebSocket_ws]
+  Data[fichier_tiles_json]
+  OM[Open_Meteo_APIs]
+  CDN[CDN_Plotly_Fonts]
+  Browser --> App
+  Browser --> WS
+  App --> Data
+  Browser --> OM
+  Browser --> CDN
+```
+
 ---
 
 ## 8. Livrables
@@ -154,7 +171,7 @@ flowchart LR
 | `docker-compose.yml` | Si retenu — services, volumes, réseaux, variables |
 | Dépendances | Fichier(s) de figeage des versions |
 | Tests | Tests unitaires et/ou d’intégration selon le périmètre convenu |
-| Documentation | `README.md` : prérequis, build, run, variables d’environnement, healthcheck |
+| Documentation | `README.md` : prérequis, build, run, variables, API, onglets, dépendances externes ; présent cahier des charges |
 | [À compléter] | [Autres livrables contractuels] |
 
 ---
@@ -169,7 +186,7 @@ Les critères suivants sont vérifiables lors de la recette.
 | CA-02 | Le conteneur **démarre** avec la commande documentée | `docker run` ou `docker compose up` |
 | CA-03 | **Healthcheck** (Dockerfile ou orchestrateur) renvoie un état sain lorsque l’application est prête | Inspection `docker inspect` ou équivalent |
 | CA-04 | Les **tests automatisés** passent | Commande documentée (ex. `pytest`) |
-| CA-05 | Les endpoints ou fonctionnalités **RF majeurs** répondent selon les cas de test agréés | Jeu de tests de recette [À compléter] |
+| CA-05 | Les fonctionnalités **RF majeurs** répondent selon les cas de test agréés | Horloge : tuiles, WebSocket, persistance ; Température : graphique après sélection lieu + dates (réseau requis) |
 | CA-06 | Aucun secret obligatoire **figé** dans l’image pour la production | Revue du Dockerfile et des layers |
 
 ---
@@ -193,6 +210,7 @@ Les critères suivants sont vérifiables lors de la recette.
 | Version minimale de Docker sur l’hôte | Échec du build ou du run | Documenter la version supportée ; tester sur CI |
 | Dépendances tierces indisponibles | Build ou runtime impossible | Miroirs, cache, alternatives documentées |
 | Accès au registre d’images | Impossibilité de pousser/tirer l’image | Comptes, secrets CI, politique réseau |
+| Indisponibilité **Open-Meteo** ou **CDN** (Plotly, polices) | Onglet Température ou styles dégradés | Documenter la dépendance ; option future : proxy backend ou hébergement local des assets |
 | [À compléter] | [À compléter] | [À compléter] |
 
 ---
@@ -201,7 +219,8 @@ Les critères suivants sont vérifiables lors de la recette.
 
 | Version | Date | Auteur | Résumé des changements |
 |---------|------|--------|------------------------|
-| 1.0 | [À compléter] | [À compléter] | Version initiale |
+| 1.0 | — | — | Version initiale (gabarit) |
+| 1.1 | 2026-03 | — | Alignement sur l’application Horloge & météo : onglets, Open-Meteo, Plotly, API et contraintes techniques réelles ; README référencé |
 
 ---
 

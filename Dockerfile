@@ -6,7 +6,7 @@ RUN useradd --create-home --uid 1000 appuser \
     && mkdir -p /data \
     && chown appuser:appuser /data
 
-ARG APP_VERSION=1.1.0
+ARG APP_VERSION=1.2.0
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
