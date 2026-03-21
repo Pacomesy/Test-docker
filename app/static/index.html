@@ -294,6 +294,40 @@
     .tile .tile-time {
       color: var(--text);
     }
+    .tile-clock-wrap {
+      display: flex;
+      justify-content: center;
+      margin: 0.35rem 0 0.65rem;
+    }
+    .analog-clock {
+      width: 118px;
+      height: 118px;
+      color: var(--text);
+      user-select: none;
+    }
+    .analog-clock .face {
+      fill: none;
+      stroke: var(--border);
+      stroke-width: 1.25;
+    }
+    .analog-clock .hand-hour line {
+      stroke: var(--text);
+      stroke-width: 3.2;
+      stroke-linecap: round;
+    }
+    .analog-clock .hand-minute line {
+      stroke: var(--accent);
+      stroke-width: 2.2;
+      stroke-linecap: round;
+    }
+    .analog-clock .hand-second line {
+      stroke: var(--danger);
+      stroke-width: 1.15;
+      stroke-linecap: round;
+    }
+    .analog-clock .cap {
+      fill: var(--text);
+    }
     .tile .remove {
       position: absolute;
       top: 0.65rem;
@@ -516,6 +550,89 @@
       if (utcPart) line += ` ${utcPart}`;
       return line;
     }
+
+    const clockSyncByTileId = new Map();
+
+    function syncClockAnchor(tileId, info) {
+      if (info && info.iso) {
+        const ms = Date.parse(info.iso);
+        if (!Number.isNaN(ms)) {
+          clockSyncByTileId.set(tileId, { anchorMs: ms, perfAt: performance.now() });
+        }
+      }
+    }
+
+    function readHmsInZone(instantMs, timeZone) {
+      const d = new Date(instantMs);
+      const opts = {
+        timeZone,
+        hour: "numeric",
+        minute: "numeric",
+        second: "numeric",
+        hour12: false,
+      };
+      let parts;
+      try {
+        parts = new Intl.DateTimeFormat("en-US", { ...opts, fractionalSecondDigits: 3 }).formatToParts(d);
+      } catch {
+        parts = new Intl.DateTimeFormat("en-US", opts).formatToParts(d);
+      }
+      const pick = (t) => parts.find((p) => p.type === t)?.value;
+      let h = parseFloat(pick("hour") || "0");
+      const m = parseFloat(pick("minute") || "0");
+      const s = parseFloat(pick("second") || "0");
+      h = ((h % 12) + 12) % 12;
+      return { h, m, s };
+    }
+
+    /** Angles en degrés, 0° = midi, sens horaire (standard horloge). */
+    function clockAnglesFromHms(h, m, s) {
+      const secDeg = s * 6;
+      const minDeg = m * 6 + s * 0.1;
+      const hourDeg = h * 30 + m * 0.5 + s * (1 / 120);
+      return { hourDeg, minDeg, secDeg };
+    }
+
+    function analogClockTicksSvg() {
+      return Array.from({ length: 12 }, (_, i) => {
+        const major = i % 3 === 0;
+        const y2 = major ? 11 : 13;
+        const sw = major ? 1.35 : 1;
+        const op = major ? 0.45 : 0.28;
+        return `<line x1="50" y1="6" x2="50" y2="${y2}" transform="rotate(${i * 30} 50 50)" stroke="currentColor" stroke-width="${sw}" opacity="${op}"/>`;
+      }).join("");
+    }
+
+    function tickAnalogClocks() {
+      grid.querySelectorAll(".tile[data-tz]").forEach((el) => {
+        const id = el.dataset.id;
+        const tz = el.dataset.tz;
+        const hourG = el.querySelector(".hand-hour");
+        const minG = el.querySelector(".hand-minute");
+        const secG = el.querySelector(".hand-second");
+        if (!hourG || !minG || !secG) return;
+        const sync = clockSyncByTileId.get(id);
+        if (!sync || !tz) {
+          hourG.setAttribute("transform", "rotate(0 50 50)");
+          minG.setAttribute("transform", "rotate(0 50 50)");
+          secG.setAttribute("transform", "rotate(0 50 50)");
+          return;
+        }
+        const instant = sync.anchorMs + (performance.now() - sync.perfAt);
+        const { h, m, s } = readHmsInZone(instant, tz);
+        const { hourDeg, minDeg, secDeg } = clockAnglesFromHms(h, m, s);
+        hourG.setAttribute("transform", `rotate(${hourDeg} 50 50)`);
+        minG.setAttribute("transform", `rotate(${minDeg} 50 50)`);
+        secG.setAttribute("transform", `rotate(${secDeg} 50 50)`);
+      });
+      requestAnimationFrame(tickAnalogClocks);
+    }
+
+    (function startAnalogClockLoop() {
+      if (startAnalogClockLoop._on) return;
+      startAnalogClockLoop._on = true;
+      requestAnimationFrame(tickAnalogClocks);
+    })();
 
     let lastChartPayload = null;
 
@@ -1000,12 +1117,24 @@
         el.setAttribute("role", "listitem");
         el.draggable = true;
         el.dataset.id = tile.id;
+        el.dataset.tz = tile.timezone;
         el.innerHTML = `
           <h2>${escapeHtml(tile.timezone)}</h2>
+          <div class="tile-clock-wrap">
+            <svg class="analog-clock" viewBox="0 0 100 100" aria-hidden="true">
+              <circle class="face" cx="50" cy="50" r="44" />
+              <g class="clock-ticks">${analogClockTicksSvg()}</g>
+              <g class="hand-hour" transform="rotate(0 50 50)"><line x1="50" y1="50" x2="50" y2="30" /></g>
+              <g class="hand-minute" transform="rotate(0 50 50)"><line x1="50" y1="50" x2="50" y2="22" /></g>
+              <g class="hand-second" transform="rotate(0 50 50)"><line x1="50" y1="52" x2="50" y2="16" /></g>
+              <circle class="cap" cx="50" cy="50" r="2.4" />
+            </svg>
+          </div>
           <div class="tile-date">${escapeHtml(formatTileDateLine(info))}</div>
           <div class="tile-time">${escapeHtml(formatTileTimeUtcLine(info))}</div>
           <button type="button" class="remove" draggable="false" data-id="${escapeHtml(tile.id)}" title="${escapeHtml(t("removeTitle"))}">×</button>
         `;
+        syncClockAnchor(tile.id, info);
         const rm = el.querySelector(".remove");
         rm.addEventListener("click", (ev) => {
           ev.stopPropagation();
@@ -1178,6 +1307,8 @@
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
         alert(err.detail || r.statusText);
+      } else {
+        clockSyncByTileId.delete(id);
       }
     }
 

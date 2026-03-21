@@ -1,0 +1,360 @@
+/**
+ * METAS.ch — CSS refactorisé (design tokens + composants de base)
+ * -----------------------------------------------------------------
+ * Source d’inspiration : feuilles servies par www.metas.ch
+ *   - /etc/designs/core/frontend/guidelines.min.css  (Bootstrap 3 + charte)
+ *   - /etc/designs/core/frontend/modules.min.css     (modules admin.ch)
+ *
+ * Ce fichier n’est pas une copie des bundles minifiés : c’est une
+ * réorganisation en variables et blocs lisibles. Les polices
+ * « Frutiger Neue » sont propriétaires ; la pile ci-dessous retombe
+ * sur Helvetica / Arial si elles ne sont pas installées / licenciées.
+ */
+
+/* ------------------------------------------------------------------ */
+/* Design tokens                                                      */
+/* ------------------------------------------------------------------ */
+
+:root {
+  /* Typo */
+  --metas-font-sans: "Frutiger Neue", "Helvetica Neue", Helvetica, Arial,
+    sans-serif;
+  --metas-font-size-base: 14px;
+  --metas-line-height-base: 1.6;
+  --metas-font-weight-heading: 400;
+  --metas-font-weight-light: 100;
+
+  /* Texte & surfaces */
+  --metas-color-text: #454545;
+  --metas-color-text-heading: #000000;
+  --metas-color-muted: #757575;
+  --metas-color-bg: #ffffff;
+
+  /* Liens & primaire (bleu administration fédéral) */
+  --metas-color-link: #03344d;
+  --metas-color-link-hover: #006699;
+  --metas-color-primary: #006699;
+  --metas-color-primary-border: #005580;
+  --metas-color-primary-hover-bg: #004466;
+
+  /* Accent Suisse / erreurs (modules admin.ch : print, formulaires, onglets) */
+  --metas-color-accent-red: #dc0018;
+
+  /* Bordures & séparateurs */
+  --metas-color-border-subtle: #eeeeee;
+  --metas-color-border: #dddddd;
+  --metas-color-border-input: #757575;
+  --metas-color-border-nav: #d5d5d5;
+
+  /* Feedback (aligné guidelines Bootstrap embarqué) */
+  --metas-color-success-text: #3c763d;
+  --metas-color-info-text: #31708f;
+  --metas-color-warning-text: #8a6d3b;
+  --metas-color-danger-text: #a94442;
+  --metas-bg-success: #dff0d8;
+  --metas-bg-info: #d9edf7;
+  --metas-bg-warning: #fffab2;
+  --metas-bg-danger: #f2dede;
+
+  /* Rayons & espacements fréquents */
+  --metas-radius: 4px;
+  --metas-space-xs: 4px;
+  --metas-space-sm: 8px;
+  --metas-space-md: 15px;
+  --metas-space-lg: 22px;
+  --metas-space-xl: 44px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Reset minimal + base                                               */
+/* ------------------------------------------------------------------ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--metas-font-sans);
+  font-size: var(--metas-font-size-base);
+  line-height: var(--metas-line-height-base);
+  color: var(--metas-color-text);
+  background-color: var(--metas-color-bg);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.h1,
+.h2,
+.h3,
+.h4,
+.h5,
+.h6 {
+  font-family: inherit;
+  font-weight: var(--metas-font-weight-heading);
+  line-height: 1.2;
+  color: var(--metas-color-text-heading);
+}
+
+h1 .small,
+h1 small,
+h2 .small,
+h2 small,
+h3 .small,
+h3 small {
+  font-weight: var(--metas-font-weight-heading);
+  line-height: 1;
+  color: var(--metas-color-muted);
+}
+
+a {
+  color: var(--metas-color-link);
+  text-decoration: none;
+}
+
+a:hover,
+a:focus {
+  color: var(--metas-color-link-hover);
+  text-decoration: underline;
+}
+
+/* Accessibilité : style focus cohérent avec la charte (outline pointillé noir) */
+a:focus,
+button:focus,
+.btn:focus,
+.nav > li > a:focus,
+.nav > li > a:hover {
+  outline: dotted 1px #000000;
+}
+
+hr {
+  margin: var(--metas-space-lg) 0;
+  border: 0;
+  border-top: 1px solid var(--metas-color-border-subtle);
+}
+
+.text-muted {
+  color: var(--metas-color-muted);
+}
+
+.text-primary {
+  color: var(--metas-color-primary);
+}
+
+mark,
+.mark {
+  padding: 0.2em;
+  background-color: var(--metas-bg-warning);
+}
+
+/* ------------------------------------------------------------------ */
+/* Boutons                                                            */
+/* ------------------------------------------------------------------ */
+
+.btn {
+  display: inline-block;
+  padding: 6px 12px;
+  margin-bottom: 0;
+  font-size: var(--metas-font-size-base);
+  font-weight: 400;
+  line-height: var(--metas-line-height-base);
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: var(--metas-radius);
+  background-image: none;
+}
+
+.btn-primary {
+  color: #ffffff;
+  background-color: var(--metas-color-primary);
+  border-color: var(--metas-color-primary-border);
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+  color: #ffffff;
+  background-color: var(--metas-color-primary-hover-bg);
+  border-color: var(--metas-color-primary-border);
+}
+
+.btn-link {
+  font-weight: 400;
+  color: var(--metas-color-link);
+  border-radius: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.btn-link:hover,
+.btn-link:focus {
+  color: var(--metas-color-link-hover);
+  text-decoration: underline;
+  background-color: transparent;
+}
+
+/* ------------------------------------------------------------------ */
+/* Formulaires (extrait mod-search / mod-nsbnewslist)                 */
+/* ------------------------------------------------------------------ */
+
+.form-control,
+input[type="text"],
+input[type="search"],
+input[type="date"],
+select,
+textarea {
+  display: block;
+  width: 100%;
+  padding: 0.4em 0.3076em;
+  font-size: var(--metas-font-size-base);
+  line-height: 1.2;
+  color: #555555;
+  background-color: var(--metas-color-bg);
+  border: 1px solid var(--metas-color-border-input);
+  border-radius: var(--metas-radius);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075);
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.form-control:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--metas-color-primary);
+  outline: 0;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.075),
+    0 0 0 2px rgba(0, 102, 153, 0.2);
+}
+
+/* Messages d’erreur type mod-form */
+.error-message,
+.form_error,
+p.error {
+  color: var(--metas-color-accent-red);
+  font-size: 0.9em;
+  background-color: var(--metas-bg-warning);
+  padding: 10px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Alertes                                                            */
+/* ------------------------------------------------------------------ */
+
+.alert {
+  padding: var(--metas-space-md);
+  margin-bottom: var(--metas-space-lg);
+  border: 1px solid transparent;
+  border-radius: var(--metas-radius);
+}
+
+.alert-success {
+  color: #2d4821;
+  background-color: var(--metas-bg-success);
+  border-color: #d6e9c6;
+}
+
+.alert-info {
+  color: #214c62;
+  background-color: var(--metas-bg-info);
+  border-color: #bce8f1;
+}
+
+.alert-warning {
+  color: #6c4a00;
+  background-color: #f9f1c6;
+  border-color: #faebcc;
+}
+
+.alert-danger {
+  color: #d2322d;
+  background-color: var(--metas-bg-danger);
+  border-color: #ebccd1;
+}
+
+/* ------------------------------------------------------------------ */
+/* Navigation / onglets (extrait mod-teaserfocus)                     */
+/* ------------------------------------------------------------------ */
+
+.nav-tabs {
+  border-bottom: 1px solid var(--metas-color-border);
+}
+
+.nav-tabs > li > a {
+  border: 1px solid transparent;
+  border-radius: var(--metas-radius) var(--metas-radius) 0 0;
+  padding: var(--metas-space-sm) var(--metas-space-md);
+  color: var(--metas-color-link);
+}
+
+.nav-tabs > li > a:hover,
+.nav-tabs > li > a:focus {
+  border-color: var(--metas-color-accent-red);
+}
+
+.nav-tabs > li.active > a,
+.nav-tabs > li.active > a:hover,
+.nav-tabs > li.active > a:focus {
+  color: var(--metas-color-text);
+  background-color: var(--metas-color-bg);
+  border: 1px solid var(--metas-color-border);
+  border-bottom-color: transparent;
+  border-right: 3px solid var(--metas-color-accent-red);
+}
+
+/* Surlignage menu déroulant (modules) */
+.dropdown-highlighted > a {
+  background: linear-gradient(
+    to bottom,
+    #e0f5ff 0%,
+    #d9edf7 61%,
+    #d9edf7 91%,
+    #d2e5ee 95%,
+    #cbdde6 100%
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Tables                                                             */
+/* ------------------------------------------------------------------ */
+
+.table {
+  width: 100%;
+  max-width: 100%;
+  border-collapse: collapse;
+}
+
+.table > thead > tr > th {
+  padding: var(--metas-space-sm);
+  vertical-align: bottom;
+  border-bottom: 2px solid var(--metas-color-border);
+  text-align: left;
+}
+
+.table > tbody > tr > td,
+.table > tbody > tr > th {
+  padding: var(--metas-space-sm);
+  border-top: 1px solid var(--metas-color-border);
+  vertical-align: top;
+}
+
+.table-striped > tbody > tr:nth-of-type(even) {
+  background-color: #f9f9f9;
+}
+
+/* ------------------------------------------------------------------ */
+/* Page header                                                        */
+/* ------------------------------------------------------------------ */
+
+.page-header {
+  padding-bottom: 10px;
+  margin: var(--metas-space-xl) 0 var(--metas-space-lg);
+  border-bottom: 1px solid var(--metas-color-border-subtle);
+}
