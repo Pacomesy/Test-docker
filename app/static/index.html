@@ -278,13 +278,22 @@
       letter-spacing: 0.06em;
       padding-right: 2rem;
     }
-    .tile .time {
+    .tile .tile-date,
+    .tile .tile-time {
       font-family: "JetBrains Mono", ui-monospace, monospace;
-      font-size: 1.75rem;
-      font-weight: 600;
+      font-size: 0.88rem;
+      font-weight: 500;
       letter-spacing: 0.02em;
+      line-height: 1.35;
+      word-break: break-word;
     }
-    .tile .date { font-size: 0.85rem; color: var(--muted); margin-top: 0.35rem; }
+    .tile .tile-date {
+      color: var(--muted);
+      margin-bottom: 0.3rem;
+    }
+    .tile .tile-time {
+      color: var(--text);
+    }
     .tile .remove {
       position: absolute;
       top: 0.65rem;
@@ -476,16 +485,35 @@
       return fetch(input, opt);
     }
 
-    function formatTileDateTime(info) {
+    function formatUtcOffsetLabel(offsetRaw) {
+      if (!offsetRaw) return "";
+      const s = String(offsetRaw).trim();
+      const m = s.match(/^([+-])(\d{2})(\d{2})$/);
+      if (!m) return `UTC ${s}`;
+      const sign = m[1];
+      const hours = parseInt(m[2], 10);
+      const minutes = parseInt(m[3], 10);
+      if (minutes === 0) return `UTC ${sign}${hours}`;
+      return `UTC ${sign}${hours}:${String(minutes).padStart(2, "0")}`;
+    }
+
+    function formatTileDateLine(info) {
       if (!info || !info.date) return "—";
       const [y, m, d] = info.date.split("-").map(Number);
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${pad(d)}.${pad(m)}.${y}`;
+    }
+
+    function formatTileTimeUtcLine(info) {
+      if (!info || !info.date) return "—";
       const parts = (info.time || "00:00:00").split(":");
       const hh = Number(parts[0] || 0);
       const mm = Number(parts[1] || 0);
       const ss = Number(parts[2] || 0);
       const pad = (n) => String(n).padStart(2, "0");
-      let line = `${pad(d)}.${pad(m)}.${y} ${pad(hh)}:${pad(mm)}:${pad(ss)}`;
-      if (info.offset) line += ` ${String(info.offset).trim()}`;
+      let line = `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
+      const utcPart = formatUtcOffsetLabel(info.offset);
+      if (utcPart) line += ` ${utcPart}`;
       return line;
     }
 
@@ -974,7 +1002,8 @@
         el.dataset.id = tile.id;
         el.innerHTML = `
           <h2>${escapeHtml(tile.timezone)}</h2>
-          <div class="time">${escapeHtml(formatTileDateTime(info))}</div>
+          <div class="tile-date">${escapeHtml(formatTileDateLine(info))}</div>
+          <div class="tile-time">${escapeHtml(formatTileTimeUtcLine(info))}</div>
           <button type="button" class="remove" draggable="false" data-id="${escapeHtml(tile.id)}" title="${escapeHtml(t("removeTitle"))}">×</button>
         `;
         const rm = el.querySelector(".remove");

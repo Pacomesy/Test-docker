@@ -28,7 +28,7 @@ Les appels Open-Meteo et le chargement de Plotly se font **depuis le navigateur*
 ### Langues (DE / FR / IT / EN)
 
 - Quatre boutons dans l’en-tête choisissent la langue de l’interface ; le choix est mémorisé dans **`localStorage`** (`appLocale`).
-- Les libellés, messages d’erreur côté page, tableau « À propos » et textes Plotly suivent la langue active. Les dates sur les **tuiles horloge** sont affichées au format **`dd.MM.yyyy HH:mm:ss`** (avec décalage fuseau si fourni).
+- Les libellés, messages d’erreur côté page, tableau « À propos » et textes Plotly suivent la langue active. Sur les **tuiles horloge** : **ligne 1** date **`dd.MM.yyyy`**, **ligne 2** heure **`HH:mm:ss`** suivie du décalage (**`UTC ±h`** ou **`UTC ±h:mm`** si demi-fuseaux).
 - Les requêtes **`fetch`** vers l’API applicative envoient l’en-tête **`X-App-Locale`** (`de`, `fr`, `it`, `en`) pour que les messages d’erreur HTTP (`detail`) soient dans la même langue.
 - Fichier des chaînes : [`app/static/locales.js`](app/static/locales.js) ; logique et montage dans [`app/static/index.html`](app/static/index.html).
 
