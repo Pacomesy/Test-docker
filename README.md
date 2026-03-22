@@ -22,6 +22,16 @@ Application web **FastAPI** avec deux pages statiques : **[`/` — horloge](app/
 
 Les appels Open-Meteo et le chargement de Plotly se font **depuis le navigateur** (aucun proxy côté serveur). Un accès Internet depuis le poste client est donc nécessaire pour cette page.
 
+### Contrôle exclusif (édition)
+
+Un seul navigateur à la fois peut **modifier** l’application (tuiles, météo, navigation synchronisée). Les autres clients restent en **lecture seule** : le contenu principal est grisé et inerte ; le bandeau de statut et les actions « langue » / « à propos » restent utilisables.
+
+- **Identité** : chaque onglet stocke un UUID dans **`localStorage`** (`appClientId`). Toutes les requêtes `fetch` mutatrices envoient l’en-tête **`X-Client-Id`** avec cet UUID. Sans en-tête valide, le serveur répond **400** ; si un contrôleur est désigné et que l’UUID ne correspond pas, les mutations renvoient **403**.
+- **Premier arrivant** : tant qu’aucun contrôleur n’est enregistré, l’interface reste en lecture seule avec le bouton **Prendre le contrôle** visible ; le premier clic envoie **`POST /api/control/request`** et devient contrôleur **sans** dialogue d’approbation.
+- **Demande** : si quelqu’un d’autre contrôle déjà, une demande est mise en **attente** ; le contrôleur voit une modale **Approuver** / **Refuser**. Le demandeur voit une modale d’attente avec **« Forcer le contrôle »**, **désactivé pendant 30 secondes** avec un **compte à rebours** dans la boîte de dialogue, puis activé : **`POST /api/control/force`** permet de reprendre le contrôle sans accord (comportement type *break glass*, volontairement autorisé côté serveur pour le client en attente). Si le contrôleur **refuse**, un message explicite s’affiche dans l’en-tête (lecture seule).
+- **État** : **`GET /api/control`** et le message WebSocket **`init`** incluent un objet `control` ; les changements diffusent **`control_updated`**.
+- **Persistance** : l’état est sauvegardé dans **`DATA_DIR/control.json`** pour survivre au redémarrage du processus.
+
 ### Synchronisation multi-clients
 
 - **Tuiles horloge** : déjà partagées via le serveur + messages WebSocket `tiles_updated` / `tick` / `init`.
@@ -122,7 +132,7 @@ En production, utilisez des certificats émis par une AC de confiance (Let’s E
 
 | Variable         | Défaut  | Rôle |
 |------------------|---------|------|
-| `DATA_DIR`       | `/data` | Répertoire contenant `tiles.json`, `meteo_ui.json`, `app_nav.json` |
+| `DATA_DIR`       | `/data` | Répertoire contenant `tiles.json`, `meteo_ui.json`, `app_nav.json`, `control.json` |
 | `UVICORN_PORT`   | `8000` (HTTP) ou `8443` (compose HTTPS) | Port d’écoute |
 | `SSL_CERTFILE`   | *(vide)* | Chemin du certificat PEM (active TLS si défini avec la clé) |
 | `SSL_KEYFILE`    | *(vide)* | Chemin de la clé privée PEM |
@@ -131,7 +141,7 @@ En production, utilisez des certificats émis par une AC de confiance (Let’s E
 
 ## API HTTP (backend)
 
-En appelant l’API hors navigateur, vous pouvez passer **`X-App-Locale: de`** (ou `fr`, `it`, `en`) pour les textes d’erreur renvoyés dans `detail`.
+En appelant l’API hors navigateur, vous pouvez passer **`X-App-Locale: de`** (ou `fr`, `it`, `en`) pour les textes d’erreur renvoyés dans `detail`. Les routes qui **modifient** des données exigent en plus **`X-Client-Id`** (UUID) et, lorsqu’un contrôleur est défini, que cet UUID soit celui du contrôleur actuel (sinon **403**).
 
 - `GET /api/version` — `{"version": "…"}` (version applicative seule)
 - `GET /api/about` — versions app, front-end, backend (Python, FastAPI, Uvicorn), Docker, et `components` (Plotly.js, Open-Meteo, polices)
@@ -140,8 +150,15 @@ En appelant l’API hors navigateur, vous pouvez passer **`X-App-Locale: de`** (
 - `PUT /api/tiles/order` — corps JSON `{"order":["id1","id2",…]}` (même ensemble d’IDs que les tuiles actuelles, nouvel ordre)
 - `DELETE /api/tiles/{id}` — supprime une tuile
 - `GET /api/timezones?q=paris` — recherche dans les fuseaux IANA
+- `GET /api/meteo/ui`, `PUT /api/meteo/ui` — état du formulaire météo (PUT mutateur : `X-Client-Id` + contrôle)
+- `GET /api/nav`, `PUT /api/nav` — route active partagée (PUT mutateur : `X-Client-Id` + contrôle)
+- `GET /api/control` — `controllerClientId`, `pendingRequesterId`, `pendingSince` (ISO ou `null`)
+- `POST /api/control/request` — prendre le contrôle ou enregistrer une demande
+- `POST /api/control/approve` — corps `{"requesterClientId":"<uuid>"}` (contrôleur uniquement)
+- `POST /api/control/deny` — même corps (contrôleur uniquement)
+- `POST /api/control/force` — le demandeur en attente reprend le contrôle
 
-**WebSocket** : `GET /ws` (protocole WebSocket) — init + ticks horloge + synchronisation des tuiles entre clients.
+**WebSocket** : `GET /ws` (protocole WebSocket) — init (tuiles, horloge, météo, nav, **control**) + ticks + `tiles_updated` / `meteo_updated` / `nav_updated` / **`control_updated`**.
 
 L’interface permet de **réordonner les tuiles par glisser-déposer** ; l’ordre est enregistré dans `tiles.json` et synchronisé entre onglets / navigateurs via WebSocket.
 
@@ -170,7 +187,7 @@ Sous Linux/macOS : `export DATA_DIR=./data` puis `mkdir -p data`.
 
 ```
 app/
-  main.py          # FastAPI, WebSocket, API tuiles / météo / nav, pages HTML
+  main.py          # FastAPI, WebSocket, API tuiles / météo / nav / contrôle, pages HTML
   version.py       # __version__ applicative
   i18n_api.py      # Messages HTTP localisés (X-App-Locale)
   static/
@@ -179,6 +196,7 @@ app/
     meteo.html     # Page température
     clock-page.js
     meteo-page.js
+    control-client.js # UUID client, bandeau contrôle, modales, inert lecture seule
     locales.js     # Chaînes DE / FR / IT / EN pour l’interface
 Dockerfile
 docker-compose.yml

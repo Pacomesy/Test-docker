@@ -27,12 +27,15 @@
     return s;
   }
 
-  function apiFetch(input, init = {}) {
-    const opt = { ...init };
-    opt.headers = new Headers(init.headers || {});
-    opt.headers.set("X-App-Locale", locale);
-    return fetch(input, opt);
-  }
+    function apiFetch(input, init = {}) {
+      const opt = { ...init };
+      opt.headers = new Headers(init.headers || {});
+      opt.headers.set("X-App-Locale", locale);
+      if (typeof window.getAppClientId === "function") {
+        opt.headers.set("X-Client-Id", window.getAppClientId());
+      }
+      return fetch(input, opt);
+    }
 
   function normalizePath(p) {
     if (p == null || p === "") return "/";
@@ -213,9 +216,10 @@
     filterSelect();
     render();
     updateLangButtons();
-    refreshWsLabel();
-    document.title = t("appTitle");
-  }
+      refreshWsLabel();
+      document.title = t("appTitle");
+      if (typeof window.refreshControlLabels === "function") window.refreshControlLabels();
+    }
 
   function setLanguage(code) {
     if (!window.APP_I18N?.[code]) return;
@@ -380,13 +384,18 @@
       setTimeout(connectWs, 2000);
     };
     ws.onerror = () => setWsStatus(false, t("wsError"));
-    ws.onmessage = (ev) => {
-      const msg = JSON.parse(ev.data);
-      if (msg.type === "init") {
-        if (msg.activeRoute) followNavIfNeeded(msg.activeRoute);
-        tiles = msg.tiles || tiles;
-        applyTimes(msg.times);
-      } else if (msg.type === "tick") {
+      ws.onmessage = (ev) => {
+        const msg = JSON.parse(ev.data);
+        if (msg.type === "init") {
+          if (msg.control && typeof window.applyControlState === "function") {
+            window.applyControlState(msg.control);
+          }
+          if (msg.activeRoute) followNavIfNeeded(msg.activeRoute);
+          tiles = msg.tiles || tiles;
+          applyTimes(msg.times);
+        } else if (msg.type === "control_updated" && msg.control) {
+          if (typeof window.applyControlState === "function") window.applyControlState(msg.control);
+        } else if (msg.type === "tick") {
         tiles = msg.tiles || tiles;
         applyTimes(msg.times);
       } else if (msg.type === "tiles_updated") {

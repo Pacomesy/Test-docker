@@ -59,6 +59,48 @@ API_MESSAGES: dict[str, dict[str, str]] = {
         "it": "L'elenco « order » deve contenere esattamente gli stessi ID delle tessere attuali.",
         "en": "The « order » list must contain exactly the same IDs as the current tiles.",
     },
+    "client_id_required": {
+        "fr": "L’en-tête X-Client-Id (identifiant client UUID) est requis.",
+        "de": "Der Header X-Client-Id (UUID) ist erforderlich.",
+        "it": "L’header X-Client-Id (UUID client) è obbligatorio.",
+        "en": "The X-Client-Id header (client UUID) is required.",
+    },
+    "client_id_invalid": {
+        "fr": "L’en-tête X-Client-Id doit être un UUID valide.",
+        "de": "Der Header X-Client-Id muss eine gültige UUID sein.",
+        "it": "L’header X-Client-Id deve essere un UUID valido.",
+        "en": "The X-Client-Id header must be a valid UUID.",
+    },
+    "not_controller": {
+        "fr": "Seul l’utilisateur qui contrôle l’application peut effectuer cette action.",
+        "de": "Nur der Benutzer, der die App steuert, darf diese Aktion ausführen.",
+        "it": "Solo chi controlla l’app può eseguire questa azione.",
+        "en": "Only the user in control of the app can perform this action.",
+    },
+    "control_not_controller": {
+        "fr": "Vous n’êtes pas le contrôleur actuel.",
+        "de": "Sie sind nicht der aktuelle Steuerer.",
+        "it": "Non sei il controllore attuale.",
+        "en": "You are not the current controller.",
+    },
+    "control_no_pending": {
+        "fr": "Aucune demande de contrôle en attente.",
+        "de": "Keine ausstehende Steuerungsanfrage.",
+        "it": "Nessuna richiesta di controllo in sospeso.",
+        "en": "No pending control request.",
+    },
+    "control_pending_mismatch": {
+        "fr": "La demande en attente ne correspond pas à cet identifiant.",
+        "de": "Die ausstehende Anfrage passt nicht zu dieser ID.",
+        "it": "La richiesta in sospeso non corrisponde a questo ID.",
+        "en": "The pending request does not match this ID.",
+    },
+    "control_force_not_pending": {
+        "fr": "Vous n’avez pas de demande de contrôle en attente.",
+        "de": "Sie haben keine ausstehende Steuerungsanfrage.",
+        "it": "Non hai una richiesta di controllo in sospeso.",
+        "en": "You have no pending control request.",
+    },
 }
 
 

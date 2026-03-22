@@ -18,6 +18,11 @@
       </h1>
     </div>
     <div class="header-right">
+      <div class="control-strip" id="controlStrip">
+        <span id="controlStatusLabel" class="control-status"></span>
+        <span id="controlFeedback" class="control-feedback" hidden role="status" aria-live="polite"></span>
+        <button type="button" id="btnTakeControl" class="btn-secondary" hidden></button>
+      </div>
       <div class="lang-switch" role="group" id="langSwitchGroup">
         <button type="button" class="btn-secondary lang-btn" data-set-lang="de" aria-pressed="false">DE</button>
         <button type="button" class="btn-secondary lang-btn" data-set-lang="fr" aria-pressed="false">FR</button>
@@ -27,7 +32,7 @@
       <button type="button" id="btnAbout" class="btn-secondary" data-i18n="btnAbout"></button>
     </div>
   </header>
-  <main>
+  <main id="appMain">
     <nav class="tabs app-nav" id="appNav" aria-label="">
       <a href="/" class="tab" id="navClock" data-sync-nav="/" data-i18n="tabClock"></a>
       <a href="/meteo" class="tab active" id="navMeteo" data-sync-nav="/meteo" data-i18n="tabTemp" aria-current="page"></a>
@@ -81,8 +86,31 @@
     </div>
   </dialog>
 
+  <dialog class="about-dialog control-dialog" id="controlWaitDialog" aria-labelledby="controlWaitTitle">
+    <div class="about-inner">
+      <h2 id="controlWaitTitle"></h2>
+      <p id="controlWaitText" class="control-dialog-p"></p>
+      <p id="controlForceHint" class="control-force-hint" aria-live="polite"></p>
+      <div class="about-actions control-dialog-actions">
+        <button type="button" id="btnControlForce" class="btn-secondary" disabled></button>
+        <button type="button" id="btnControlWaitCancel" class="btn-secondary"></button>
+      </div>
+    </div>
+  </dialog>
+  <dialog class="about-dialog control-dialog" id="controlApproveDialog" aria-labelledby="controlApproveTitle">
+    <div class="about-inner">
+      <h2 id="controlApproveTitle"></h2>
+      <p id="controlApproveText" class="control-dialog-p"></p>
+      <div class="about-actions control-dialog-actions">
+        <button type="button" id="btnControlDeny" class="btn-secondary"></button>
+        <button type="button" id="btnControlApprove"></button>
+      </div>
+    </div>
+  </dialog>
+
   <script src="/assets/locales.js"></script>
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+  <script src="/assets/control-client.js"></script>
   <script src="/assets/meteo-page.js"></script>
 </body>
 </html>

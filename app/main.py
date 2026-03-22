@@ -15,7 +15,7 @@ from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconne
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.i18n_api import UnknownTimezoneError, api_msg
 from app.version import __version__ as _package_version
@@ -24,6 +24,7 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 TILES_FILE = DATA_DIR / "tiles.json"
 METEO_UI_FILE = DATA_DIR / "meteo_ui.json"
 NAV_FILE = DATA_DIR / "app_nav.json"
+CONTROL_FILE = DATA_DIR / "control.json"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 APP_VERSION = os.environ.get("APP_VERSION", _package_version)
@@ -148,6 +149,38 @@ def save_nav(state: dict) -> None:
     )
 
 
+DEFAULT_CONTROL: dict = {
+    "controllerClientId": None,
+    "pendingRequesterId": None,
+    "pendingSince": None,
+}
+
+
+def load_control() -> dict:
+    _ensure_data_dir()
+    if not CONTROL_FILE.is_file():
+        return dict(DEFAULT_CONTROL)
+    try:
+        raw = json.loads(CONTROL_FILE.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            return dict(DEFAULT_CONTROL)
+        out = dict(DEFAULT_CONTROL)
+        for k in DEFAULT_CONTROL:
+            if k in raw:
+                out[k] = raw[k]
+        return out
+    except (json.JSONDecodeError, OSError):
+        return dict(DEFAULT_CONTROL)
+
+
+def save_control_disk(state: dict) -> None:
+    _ensure_data_dir()
+    CONTROL_FILE.write_text(
+        json.dumps(state, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
 def validate_tz(name: str) -> str:
     if name not in available_timezones():
         raise UnknownTimezoneError(name)
@@ -219,11 +252,52 @@ class NavIn(BaseModel):
     activeRoute: Literal["/", "/meteo"]
 
 
+class ControlApproveBody(BaseModel):
+    requesterClientId: str = Field(..., min_length=1)
+
+
+class ControlDenyBody(BaseModel):
+    requesterClientId: str = Field(..., min_length=1)
+
+
 manager = ConnectionManager()
 _tiles_state: list[dict] = []
 _meteo_ui_state: dict = dict(DEFAULT_METEO_UI)
 _nav_state: dict = dict(DEFAULT_NAV)
+_control_state: dict = dict(DEFAULT_CONTROL)
 _tick_task: asyncio.Task | None = None
+
+
+def _parse_client_id(x_client_id: str | None, x_app_locale: str | None) -> str:
+    if not x_client_id or not str(x_client_id).strip():
+        raise HTTPException(
+            status_code=400,
+            detail=api_msg(x_app_locale, "client_id_required"),
+        )
+    s = str(x_client_id).strip()
+    try:
+        parsed = uuid.UUID(s)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=api_msg(x_app_locale, "client_id_invalid"),
+        ) from None
+    return str(parsed)
+
+
+def _require_controller_privilege(client_id: str, x_app_locale: str | None) -> None:
+    ctrl = _control_state.get("controllerClientId")
+    if ctrl is None:
+        return
+    if client_id != ctrl:
+        raise HTTPException(
+            status_code=403,
+            detail=api_msg(x_app_locale, "not_controller"),
+        )
+
+
+async def _broadcast_control_updated() -> None:
+    await manager.broadcast_json({"type": "control_updated", "control": dict(_control_state)})
 
 
 async def tick_loop() -> None:
@@ -236,10 +310,11 @@ async def tick_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _tiles_state, _meteo_ui_state, _nav_state, _tick_task
+    global _tiles_state, _meteo_ui_state, _nav_state, _control_state, _tick_task
     _tiles_state = load_tiles()
     _meteo_ui_state = load_meteo_ui()
     _nav_state = load_nav()
+    _control_state = load_control()
     _tick_task = asyncio.create_task(tick_loop())
     yield
     if _tick_task:
@@ -308,7 +383,10 @@ async def get_tiles():
 async def add_tile(
     body: TileIn,
     x_app_locale: str | None = Header(None, alias="X-App-Locale"),
+    x_client_id: str | None = Header(None, alias="X-Client-Id"),
 ):
+    cid = _parse_client_id(x_client_id, x_app_locale)
+    _require_controller_privilege(cid, x_app_locale)
     tz = body.timezone
     try:
         tz = validate_tz(tz.strip())
@@ -333,7 +411,10 @@ async def add_tile(
 async def remove_tile(
     tile_id: str,
     x_app_locale: str | None = Header(None, alias="X-App-Locale"),
+    x_client_id: str | None = Header(None, alias="X-Client-Id"),
 ):
+    cid = _parse_client_id(x_client_id, x_app_locale)
+    _require_controller_privilege(cid, x_app_locale)
     global _tiles_state
     before = len(_tiles_state)
     _tiles_state = [t for t in _tiles_state if t["id"] != tile_id]
@@ -351,7 +432,10 @@ async def remove_tile(
 async def reorder_tiles(
     body: TileOrderIn,
     x_app_locale: str | None = Header(None, alias="X-App-Locale"),
+    x_client_id: str | None = Header(None, alias="X-Client-Id"),
 ):
+    cid = _parse_client_id(x_client_id, x_app_locale)
+    _require_controller_privilege(cid, x_app_locale)
     global _tiles_state
     current_ids = [t["id"] for t in _tiles_state]
     if len(body.order) != len(current_ids) or set(body.order) != set(current_ids):
@@ -381,7 +465,13 @@ async def get_meteo_ui():
 
 
 @app.put("/api/meteo/ui")
-async def put_meteo_ui(body: MeteoUiIn):
+async def put_meteo_ui(
+    body: MeteoUiIn,
+    x_app_locale: str | None = Header(None, alias="X-App-Locale"),
+    x_client_id: str | None = Header(None, alias="X-Client-Id"),
+):
+    cid = _parse_client_id(x_client_id, x_app_locale)
+    _require_controller_privilege(cid, x_app_locale)
     global _meteo_ui_state
     place_dict: dict | None = None
     if body.place is not None:
@@ -411,7 +501,13 @@ async def get_nav():
 
 
 @app.put("/api/nav")
-async def put_nav(body: NavIn):
+async def put_nav(
+    body: NavIn,
+    x_app_locale: str | None = Header(None, alias="X-App-Locale"),
+    x_client_id: str | None = Header(None, alias="X-Client-Id"),
+):
+    cid = _parse_client_id(x_client_id, x_app_locale)
+    _require_controller_privilege(cid, x_app_locale)
     global _nav_state
     _nav_state = {"activeRoute": body.activeRoute}
     save_nav(_nav_state)
@@ -419,6 +515,142 @@ async def put_nav(body: NavIn):
         {"type": "nav_updated", "activeRoute": body.activeRoute}
     )
     return dict(_nav_state)
+
+
+@app.get("/api/control")
+async def get_control():
+    return dict(_control_state)
+
+
+@app.post("/api/control/request")
+async def control_request(
+    x_app_locale: str | None = Header(None, alias="X-App-Locale"),
+    x_client_id: str | None = Header(None, alias="X-Client-Id"),
+):
+    global _control_state
+    cid = _parse_client_id(x_client_id, x_app_locale)
+    ctrl = _control_state.get("controllerClientId")
+    if ctrl is None:
+        _control_state = {
+            "controllerClientId": cid,
+            "pendingRequesterId": None,
+            "pendingSince": None,
+        }
+        save_control_disk(_control_state)
+        await _broadcast_control_updated()
+        return {"status": "controller", "control": dict(_control_state)}
+    if ctrl == cid:
+        return {"status": "already_controller", "control": dict(_control_state)}
+    _control_state = {
+        "controllerClientId": ctrl,
+        "pendingRequesterId": cid,
+        "pendingSince": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+    }
+    save_control_disk(_control_state)
+    await _broadcast_control_updated()
+    return {"status": "pending", "control": dict(_control_state)}
+
+
+@app.post("/api/control/approve")
+async def control_approve(
+    body: ControlApproveBody,
+    x_app_locale: str | None = Header(None, alias="X-App-Locale"),
+    x_client_id: str | None = Header(None, alias="X-Client-Id"),
+):
+    global _control_state
+    cid = _parse_client_id(x_client_id, x_app_locale)
+    ctrl = _control_state.get("controllerClientId")
+    if ctrl != cid:
+        raise HTTPException(
+            status_code=403,
+            detail=api_msg(x_app_locale, "control_not_controller"),
+        )
+    pending = _control_state.get("pendingRequesterId")
+    if not pending:
+        raise HTTPException(
+            status_code=400,
+            detail=api_msg(x_app_locale, "control_no_pending"),
+        )
+    try:
+        rid_norm = str(uuid.UUID(body.requesterClientId.strip()))
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=api_msg(x_app_locale, "control_pending_mismatch"),
+        ) from None
+    if rid_norm != pending:
+        raise HTTPException(
+            status_code=400,
+            detail=api_msg(x_app_locale, "control_pending_mismatch"),
+        )
+    _control_state = {
+        "controllerClientId": rid_norm,
+        "pendingRequesterId": None,
+        "pendingSince": None,
+    }
+    save_control_disk(_control_state)
+    await _broadcast_control_updated()
+    return {"status": "approved", "control": dict(_control_state)}
+
+
+@app.post("/api/control/deny")
+async def control_deny(
+    body: ControlDenyBody,
+    x_app_locale: str | None = Header(None, alias="X-App-Locale"),
+    x_client_id: str | None = Header(None, alias="X-Client-Id"),
+):
+    global _control_state
+    cid = _parse_client_id(x_client_id, x_app_locale)
+    ctrl = _control_state.get("controllerClientId")
+    if ctrl != cid:
+        raise HTTPException(
+            status_code=403,
+            detail=api_msg(x_app_locale, "control_not_controller"),
+        )
+    pending = _control_state.get("pendingRequesterId")
+    try:
+        rid_norm = str(uuid.UUID(body.requesterClientId.strip()))
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=api_msg(x_app_locale, "control_pending_mismatch"),
+        ) from None
+    if not pending or rid_norm != pending:
+        raise HTTPException(
+            status_code=400,
+            detail=api_msg(x_app_locale, "control_pending_mismatch"),
+        )
+    _control_state = {
+        "controllerClientId": ctrl,
+        "pendingRequesterId": None,
+        "pendingSince": None,
+    }
+    save_control_disk(_control_state)
+    await _broadcast_control_updated()
+    return {"status": "denied", "control": dict(_control_state)}
+
+
+@app.post("/api/control/force")
+async def control_force(
+    x_app_locale: str | None = Header(None, alias="X-App-Locale"),
+    x_client_id: str | None = Header(None, alias="X-Client-Id"),
+):
+    global _control_state
+    cid = _parse_client_id(x_client_id, x_app_locale)
+    pending = _control_state.get("pendingRequesterId")
+    if pending != cid:
+        raise HTTPException(
+            status_code=403,
+            detail=api_msg(x_app_locale, "control_force_not_pending"),
+        )
+    _control_state = {
+        "controllerClientId": cid,
+        "pendingRequesterId": None,
+        "pendingSince": None,
+    }
+    save_control_disk(_control_state)
+    await _broadcast_control_updated()
+    return {"status": "forced", "control": dict(_control_state)}
 
 
 @app.websocket("/ws")
@@ -433,6 +665,7 @@ async def websocket_clock(ws: WebSocket):
                 "times": times,
                 "meteo": dict(_meteo_ui_state),
                 "activeRoute": _nav_state["activeRoute"],
+                "control": dict(_control_state),
             }
         )
         while True:

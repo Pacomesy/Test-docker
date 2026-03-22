@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+H_A = {"X-Client-Id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}
+
 
 def test_websocket_init_payload(client) -> None:
     with client.websocket_connect("/ws") as ws:
@@ -16,12 +18,14 @@ def test_websocket_init_payload(client) -> None:
         assert msg["meteo"]["v"] == 1
         assert "activeRoute" in msg
         assert msg["activeRoute"] in ("/", "/meteo")
+        assert "control" in msg
+        assert "controllerClientId" in msg["control"]
 
 
 def test_websocket_nav_updated_on_put_nav(client) -> None:
     with client.websocket_connect("/ws") as ws:
         ws.receive_json()
-        r = client.put("/api/nav", json={"activeRoute": "/meteo"})
+        r = client.put("/api/nav", json={"activeRoute": "/meteo"}, headers=H_A)
         assert r.status_code == 200
         msg = ws.receive_json()
         assert msg["type"] == "nav_updated"
@@ -40,6 +44,7 @@ def test_websocket_meteo_updated_on_put_meteo_ui(client) -> None:
                 "geoQuery": "",
                 "place": None,
             },
+            headers=H_A,
         )
         assert r.status_code == 200
         msg = ws.receive_json()

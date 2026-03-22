@@ -31,6 +31,9 @@
     const opt = { ...init };
     opt.headers = new Headers(init.headers || {});
     opt.headers.set("X-App-Locale", locale);
+    if (typeof window.getAppClientId === "function") {
+      opt.headers.set("X-Client-Id", window.getAppClientId());
+    }
     return fetch(input, opt);
   }
 
@@ -229,6 +232,7 @@
     }
     updateLangButtons();
     document.title = t("appTitle");
+    if (typeof window.refreshControlLabels === "function") window.refreshControlLabels();
     if (typeof Plotly !== "undefined" && lastChartPayload && tempPlot.querySelector(".js-plotly-plot")) {
       redrawPlotFromCache();
     }
@@ -617,6 +621,9 @@
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
       if (msg.type === "init") {
+        if (msg.control && typeof window.applyControlState === "function") {
+          window.applyControlState(msg.control);
+        }
         if (msg.activeRoute) followNavIfNeeded(msg.activeRoute);
         if (msg.meteo && !serverMeteoIsBlank(msg.meteo)) {
           const same = meteoStateEqualsServer(msg.meteo);
@@ -627,6 +634,8 @@
         const same = meteoStateEqualsServer(msg.meteo);
         if (!same) applyMeteoFromServer(msg.meteo);
         if (!same || chartNeedsInitialLoad()) void maybeReloadMeteoChart();
+      } else if (msg.type === "control_updated" && msg.control) {
+        if (typeof window.applyControlState === "function") window.applyControlState(msg.control);
       } else if (msg.type === "nav_updated" && msg.activeRoute) {
         followNavIfNeeded(msg.activeRoute, { force: true });
       }
