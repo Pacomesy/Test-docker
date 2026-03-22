@@ -1,0 +1,30 @@
+# GÃ©nÃ©rÃ© par scripts/pack-offline.ps1 â€” image figÃ©e, aucun build/pull sur la cible hors ligne.
+services:
+  app:
+    image: horloge-meteo:1.2.0
+    pull_policy: never
+    ports:
+      - "8000:8000"
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - app_data:/data
+
+  app-https:
+    profiles:
+      - https
+    image: horloge-meteo:1.2.0
+    pull_policy: never
+    ports:
+      - "8443:8443"
+    environment:
+      DATA_DIR: /data
+      UVICORN_PORT: "8443"
+      SSL_CERTFILE: /certs/cert.pem
+      SSL_KEYFILE: /certs/key.pem
+    volumes:
+      - app_data:/data
+      - ./certs:/certs:ro
+
+volumes:
+  app_data:

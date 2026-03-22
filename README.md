@@ -83,6 +83,18 @@ Pour figer la version dans l’image Docker (voir section **Version** ci-dessous
 docker build --build-arg APP_VERSION=1.2.0 -t horloge-meteo:1.2.0 .
 ```
 
+## Déploiement sans réseau (offline)
+
+Pour une machine **sans Internet** : sur un poste connecté, générez un pack (image exportée + compose sans `build` / `pull`), puis transférez le dossier ou le ZIP.
+
+```powershell
+.\scripts\pack-offline.ps1 -OutDir .\offline-pack -Zip
+```
+
+Sur la cible : décompressez si besoin, puis exécutez `load-and-run-offline.sh` (Linux/macOS) ou `load-and-run-offline.ps1` (Windows) **depuis le dossier du pack**. Détail des étapes, HTTPS et limites (météo / CDN) : **[`OFFLINE_DEPLOY.md`](OFFLINE_DEPLOY.md)**.
+
+Un fichier **[`docker-compose.offline.yml`](docker-compose.offline.yml)** à la racine sert de référence après un `docker load` manuel de l’image taguée `horloge-meteo:1.2.0`.
+
 ## Version de l’application
 
 - **Code** : constante `__version__` dans [`app/version.py`](app/version.py) — point d’entrée pour les développements hors Docker.
@@ -200,7 +212,14 @@ app/
     locales.js     # Chaînes DE / FR / IT / EN pour l’interface
 Dockerfile
 docker-compose.yml
+docker-compose.offline.yml
 docker-entrypoint.sh
+scripts/
+  pack-offline.ps1
+  docker-compose.offline.template.yml
+  load-and-run-offline.sh
+  load-and-run-offline.ps1
+OFFLINE_DEPLOY.md
 requirements.txt
 README.md
 CAHIER_DES_CHARGES.md

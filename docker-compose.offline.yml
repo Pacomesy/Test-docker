@@ -1,0 +1,31 @@
+# Compose pour cible sans Internet après « docker load » (même image que le tag ci-dessous).
+# Pour un pack automatique avec tag cohérent : scripts/pack-offline.ps1
+services:
+  app:
+    image: horloge-meteo:1.2.0
+    pull_policy: never
+    ports:
+      - "8000:8000"
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - app_data:/data
+
+  app-https:
+    profiles:
+      - https
+    image: horloge-meteo:1.2.0
+    pull_policy: never
+    ports:
+      - "8443:8443"
+    environment:
+      DATA_DIR: /data
+      UVICORN_PORT: "8443"
+      SSL_CERTFILE: /certs/cert.pem
+      SSL_KEYFILE: /certs/key.pem
+    volumes:
+      - app_data:/data
+      - ./certs:/certs:ro
+
+volumes:
+  app_data:
