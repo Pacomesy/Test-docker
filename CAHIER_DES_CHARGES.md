@@ -77,11 +77,12 @@ Les exigences ci-dessous sont numérotées pour le suivi de recette. Les formula
 
 | ID | Description | Priorité |
 |----|-------------|----------|
-| RF-01 | L’application expose une **API HTTP** (REST) pour la version, les métadonnées « à propos », la liste / création / suppression / ordre des tuiles fuseaux, et la recherche de fuseaux IANA. | Majeur |
-| RF-02 | L’application expose un **WebSocket** `/ws` pour pousser l’heure et les mises à jour de tuiles en temps réel. | Majeur |
+| RF-01 | L’application expose une **API HTTP** (REST) pour la version, les métadonnées « à propos », la liste / création / suppression / ordre des tuiles fuseaux, la recherche de fuseaux IANA, l’état partagé du formulaire température (`/api/meteo/ui`) et la route active partagée (`/api/nav`). | Majeur |
+| RF-02 | L’application expose un **WebSocket** `/ws` pour pousser l’heure, les mises à jour de tuiles, l’état météo UI et la navigation synchronisée entre clients. | Majeur |
 | RF-03 | **Hors périmètre** actuel : CLI dédiée et traitements batch planifiés (l’app est un service web continu). | Hors périmètre |
-| RF-04 | **Interface web** à onglets : (1) **Horloge** — tuiles par fuseau, ajout/suppression, glisser-déposer pour l’ordre ; (2) **Température** — choix de lieu (géocodage Open-Meteo), plage de dates, résolution horaire ou journalière, graphique Plotly.js avec zoom. | Majeur |
+| RF-04 | **Interface web** en **deux pages** : **`/` — Horloge** (tuiles par fuseau, ajout/suppression, glisser-déposer pour l’ordre) et **`/meteo` — Température** (lieu par géocodage Open-Meteo, plage de dates, résolution horaire ou journalière, graphique Plotly.js avec zoom). Navigation par liens dans l’en-tête. | Majeur |
 | RF-05 | Persistance des tuiles horloge dans un fichier JSON sous `DATA_DIR` (ex. volume Docker). | Majeur |
+| RF-06 | **Synchronisation multi-utilisateurs** (même instance serveur) : tuiles et ordre partagés ; formulaire température et page affichée (`/` ou `/meteo`) partagés avec persistance JSON et notification WebSocket ; politique de conflit **dernier écriture gagne** sur les mises à jour concurrentes. | Majeur |
 
 **User stories (référence recette) :**
 
@@ -110,7 +111,7 @@ Les exigences ci-dessous sont numérotées pour le suivi de recette. Les formula
 | Élément | Spécification |
 |---------|----------------|
 | Langage | Python **3.12** (image de base `python:3.12-slim`) |
-| Framework | **FastAPI** + **Uvicorn** ; interface statique servie depuis `app/static/index.html` |
+| Framework | **FastAPI** + **Uvicorn** ; pages statiques `app/static/clock.html` (`/`) et `app/static/meteo.html` (`/meteo`), CSS `app/static/app.css` |
 | Dépendances | `requirements.txt` figé pour la reproductibilité des builds |
 | Docker | `Dockerfile` versionné ; utilisateur non-root `appuser` ; entrée `docker-entrypoint.sh` |
 | Orchestration locale | `docker-compose.yml` — service HTTP (8000), profil optionnel HTTPS (8443) |
@@ -171,7 +172,7 @@ flowchart LR
 | `docker-compose.yml` | Si retenu — services, volumes, réseaux, variables |
 | Dépendances | Fichier(s) de figeage des versions |
 | Tests | Tests unitaires et/ou d’intégration selon le périmètre convenu |
-| Documentation | `README.md` : prérequis, build, run, variables, API, onglets, dépendances externes ; présent cahier des charges |
+| Documentation | `README.md` : prérequis, build, run, variables, API, pages, synchro multi-clients, dépendances externes ; présent cahier des charges |
 | [À compléter] | [Autres livrables contractuels] |
 
 ---
@@ -186,7 +187,7 @@ Les critères suivants sont vérifiables lors de la recette.
 | CA-02 | Le conteneur **démarre** avec la commande documentée | `docker run` ou `docker compose up` |
 | CA-03 | **Healthcheck** (Dockerfile ou orchestrateur) renvoie un état sain lorsque l’application est prête | Inspection `docker inspect` ou équivalent |
 | CA-04 | Les **tests automatisés** passent | Commande documentée (ex. `pytest`) |
-| CA-05 | Les fonctionnalités **RF majeurs** répondent selon les cas de test agréés | Horloge : tuiles, WebSocket, persistance ; Température : graphique après sélection lieu + dates (réseau requis) |
+| CA-05 | Les fonctionnalités **RF majeurs** répondent selon les cas de test agréés | Horloge : tuiles, WebSocket, persistance ; Température : graphique après sélection lieu + dates (réseau requis) ; synchro : APIs `/api/meteo/ui`, `/api/nav` et messages WebSocket documentés |
 | CA-06 | Aucun secret obligatoire **figé** dans l’image pour la production | Revue du Dockerfile et des layers |
 
 ---

@@ -13,6 +13,8 @@ def client(monkeypatch, tmp_path):
 
     monkeypatch.setattr(main, "DATA_DIR", tmp_path)
     monkeypatch.setattr(main, "TILES_FILE", tmp_path / "tiles.json")
+    monkeypatch.setattr(main, "METEO_UI_FILE", tmp_path / "meteo_ui.json")
+    monkeypatch.setattr(main, "NAV_FILE", tmp_path / "app_nav.json")
 
     async def quiet_tick() -> None:
         await asyncio.Event().wait()

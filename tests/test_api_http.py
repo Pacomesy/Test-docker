@@ -122,7 +122,56 @@ def test_list_timezones_limit_capped(client) -> None:
     assert len(r.json()["timezones"]) <= 500
 
 
-def test_index_page(client) -> None:
+def test_clock_page(client) -> None:
     r = client.get("/")
     assert r.status_code == 200
     assert "text/html" in r.headers.get("content-type", "")
+    assert b"clock-page.js" in r.content
+
+
+def test_meteo_page(client) -> None:
+    r = client.get("/meteo")
+    assert r.status_code == 200
+    assert "text/html" in r.headers.get("content-type", "")
+    assert b"meteo-page.js" in r.content
+
+
+def test_get_nav_default(client) -> None:
+    r = client.get("/api/nav")
+    assert r.status_code == 200
+    assert r.json()["activeRoute"] == "/"
+
+
+def test_put_nav_roundtrip(client) -> None:
+    r = client.put("/api/nav", json={"activeRoute": "/meteo"})
+    assert r.status_code == 200
+    assert r.json()["activeRoute"] == "/meteo"
+    assert client.get("/api/nav").json()["activeRoute"] == "/meteo"
+
+
+def test_put_nav_invalid_route(client) -> None:
+    r = client.put("/api/nav", json={"activeRoute": "/nowhere"})
+    assert r.status_code == 422
+
+
+def test_get_meteo_ui_default(client) -> None:
+    r = client.get("/api/meteo/ui")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["v"] == 1
+    assert d["resolution"] in ("hour", "day")
+
+
+def test_put_meteo_ui_roundtrip(client) -> None:
+    body = {
+        "dateStart": "2025-01-01",
+        "dateEnd": "2025-01-15",
+        "resolution": "hour",
+        "geoQuery": "Paris",
+        "place": {"lat": 48.85, "lon": 2.35, "label": "Paris, FR"},
+    }
+    r = client.put("/api/meteo/ui", json=body)
+    assert r.status_code == 200
+    assert r.json()["place"]["label"] == "Paris, FR"
+    r2 = client.get("/api/meteo/ui")
+    assert r2.json()["geoQuery"] == "Paris"

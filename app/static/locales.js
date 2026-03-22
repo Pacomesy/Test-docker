@@ -1,5 +1,5 @@
 /**
- * Chaînes UI (DE, FR, IT, EN). Chargé avant le script principal dans index.html.
+ * Chaînes UI (DE, FR, IT, EN). Chargé avant clock-page.js / meteo-page.js.
  * Clés : même ensemble pour chaque locale. {name}, {label}, {days} pour t().
  */
 window.APP_I18N = {

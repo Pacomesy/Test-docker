@@ -29,6 +29,12 @@ API_MESSAGES: dict[str, dict[str, str]] = {
         "it": "File index.html mancante.",
         "en": "index.html file is missing.",
     },
+    "page_missing": {
+        "fr": "Fichier page HTML introuvable.",
+        "de": "HTML-Seite fehlt.",
+        "it": "Pagina HTML mancante.",
+        "en": "HTML page file is missing.",
+    },
     "unknown_tz": {
         "fr": "Fuseau inconnu : {name}",
         "de": "Unbekannte Zeitzone: {name}",

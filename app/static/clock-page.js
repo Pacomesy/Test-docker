@@ -1,0 +1,549 @@
+(function () {
+  "use strict";
+
+  const LOCALE_STORAGE_KEY = "appLocale";
+
+  function readStoredLocale() {
+    const T = window.APP_I18N || {};
+    const raw = localStorage.getItem(LOCALE_STORAGE_KEY);
+    if (raw && T[raw]) return raw;
+    const nav = (navigator.language || "fr").slice(0, 2).toLowerCase();
+    if (T[nav]) return nav;
+    return "fr";
+  }
+
+  let locale = readStoredLocale();
+  document.documentElement.lang = locale;
+
+  function t(key, params) {
+    const T = window.APP_I18N || {};
+    const table = T[locale] || T.fr || {};
+    let s = table[key] ?? T.fr?.[key] ?? key;
+    if (params) {
+      for (const [k, v] of Object.entries(params)) {
+        s = s.split(`{${k}}`).join(String(v));
+      }
+    }
+    return s;
+  }
+
+  function apiFetch(input, init = {}) {
+    const opt = { ...init };
+    opt.headers = new Headers(init.headers || {});
+    opt.headers.set("X-App-Locale", locale);
+    return fetch(input, opt);
+  }
+
+  function normalizePath(p) {
+    if (p == null || p === "") return "/";
+    const s = String(p).replace(/\/$/, "") || "/";
+    return s;
+  }
+
+  function followNavIfNeeded(activeRoute, opts) {
+    const force = opts && opts.force === true;
+    const cur = normalizePath(window.location.pathname);
+    const target = normalizePath(activeRoute);
+    if (cur === target) return;
+    if (!force && cur === "/meteo" && target === "/") return;
+    window.location.assign(activeRoute);
+  }
+
+  function wireNavLinks() {
+    document.querySelectorAll("a[data-sync-nav]").forEach((a) => {
+      a.addEventListener("click", async (e) => {
+        e.preventDefault();
+        const route = a.getAttribute("data-sync-nav");
+        try {
+          await apiFetch("/api/nav", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ activeRoute: route }),
+          });
+        } catch (_) {}
+        window.location.assign(route);
+      });
+    });
+  }
+
+  function formatUtcOffsetLabel(offsetRaw) {
+    if (!offsetRaw) return "";
+    const s = String(offsetRaw).trim();
+    const m = s.match(/^([+-])(\d{2})(\d{2})$/);
+    if (!m) return `UTC ${s}`;
+    const sign = m[1];
+    const hours = parseInt(m[2], 10);
+    const minutes = parseInt(m[3], 10);
+    if (minutes === 0) return `UTC ${sign}${hours}`;
+    return `UTC ${sign}${hours}:${String(minutes).padStart(2, "0")}`;
+  }
+
+  function formatTileDateLine(info) {
+    if (!info || !info.date) return "—";
+    const [y, m, d] = info.date.split("-").map(Number);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${pad(d)}.${pad(m)}.${y}`;
+  }
+
+  function formatTileTimeUtcLine(info) {
+    if (!info || !info.date) return "—";
+    const parts = (info.time || "00:00:00").split(":");
+    const hh = Number(parts[0] || 0);
+    const mm = Number(parts[1] || 0);
+    const ss = Number(parts[2] || 0);
+    const pad = (n) => String(n).padStart(2, "0");
+    let line = `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
+    const utcPart = formatUtcOffsetLabel(info.offset);
+    if (utcPart) line += ` ${utcPart}`;
+    return line;
+  }
+
+  const clockSyncByTileId = new Map();
+
+  function syncClockAnchor(tileId, info) {
+    if (info && info.iso) {
+      const ms = Date.parse(info.iso);
+      if (!Number.isNaN(ms)) {
+        clockSyncByTileId.set(tileId, { anchorMs: ms, perfAt: performance.now() });
+      }
+    }
+  }
+
+  function readHmsInZone(instantMs, timeZone) {
+    const d = new Date(instantMs);
+    const opts = {
+      timeZone,
+      hour: "numeric",
+      minute: "numeric",
+      second: "numeric",
+      hour12: false,
+    };
+    let parts;
+    try {
+      parts = new Intl.DateTimeFormat("en-US", { ...opts, fractionalSecondDigits: 3 }).formatToParts(d);
+    } catch {
+      parts = new Intl.DateTimeFormat("en-US", opts).formatToParts(d);
+    }
+    const pick = (ty) => parts.find((p) => p.type === ty)?.value;
+    let h = parseFloat(pick("hour") || "0");
+    const m = parseFloat(pick("minute") || "0");
+    const s = parseFloat(pick("second") || "0");
+    h = ((h % 12) + 12) % 12;
+    return { h, m, s };
+  }
+
+  function clockAnglesFromHms(h, m, s) {
+    const secDeg = s * 6;
+    const minDeg = m * 6 + s * 0.1;
+    const hourDeg = h * 30 + m * 0.5 + s * (1 / 120);
+    return { hourDeg, minDeg, secDeg };
+  }
+
+  function analogClockTicksSvg() {
+    return Array.from({ length: 12 }, (_, i) => {
+      const major = i % 3 === 0;
+      const y2 = major ? 11 : 13;
+      const sw = major ? 1.35 : 1;
+      const op = major ? 0.45 : 0.28;
+      return `<line x1="50" y1="6" x2="50" y2="${y2}" transform="rotate(${i * 30} 50 50)" stroke="currentColor" stroke-width="${sw}" opacity="${op}"/>`;
+    }).join("");
+  }
+
+  function tickAnalogClocks() {
+    grid.querySelectorAll(".tile[data-tz]").forEach((el) => {
+      const id = el.dataset.id;
+      const tz = el.dataset.tz;
+      const hourG = el.querySelector(".hand-hour");
+      const minG = el.querySelector(".hand-minute");
+      const secG = el.querySelector(".hand-second");
+      if (!hourG || !minG || !secG) return;
+      const sync = clockSyncByTileId.get(id);
+      if (!sync || !tz) {
+        hourG.setAttribute("transform", "rotate(0 50 50)");
+        minG.setAttribute("transform", "rotate(0 50 50)");
+        secG.setAttribute("transform", "rotate(0 50 50)");
+        return;
+      }
+      const instant = sync.anchorMs + (performance.now() - sync.perfAt);
+      const { h, m, s } = readHmsInZone(instant, tz);
+      const { hourDeg, minDeg, secDeg } = clockAnglesFromHms(h, m, s);
+      hourG.setAttribute("transform", `rotate(${hourDeg} 50 50)`);
+      minG.setAttribute("transform", `rotate(${minDeg} 50 50)`);
+      secG.setAttribute("transform", `rotate(${secDeg} 50 50)`);
+    });
+    requestAnimationFrame(tickAnalogClocks);
+  }
+
+  (function startAnalogClockLoop() {
+    if (startAnalogClockLoop._on) return;
+    startAnalogClockLoop._on = true;
+    requestAnimationFrame(tickAnalogClocks);
+  })();
+
+  function updateLangButtons() {
+    document.querySelectorAll("[data-set-lang]").forEach((btn) => {
+      const on = btn.getAttribute("data-set-lang") === locale;
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-pressed", String(on));
+    });
+  }
+
+  function applyLocale() {
+    document.documentElement.lang = locale;
+    document.querySelectorAll("[data-i18n]").forEach((el) => {
+      el.textContent = t(el.getAttribute("data-i18n"));
+    });
+    document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+      el.setAttribute("placeholder", t(el.getAttribute("data-i18n-placeholder")));
+    });
+    document.querySelectorAll("[data-i18n-aria-label]").forEach((el) => {
+      el.setAttribute("aria-label", t(el.getAttribute("data-i18n-aria-label")));
+    });
+    const g = document.getElementById("langSwitchGroup");
+    if (g) g.setAttribute("aria-label", t("langGroupAria"));
+    const langAria = { de: "langDE", fr: "langFR", it: "langIT", en: "langEN" };
+    document.querySelectorAll("[data-set-lang]").forEach((btn) => {
+      const code = btn.getAttribute("data-set-lang");
+      btn.setAttribute("aria-label", t(langAria[code] || "langEN"));
+    });
+    const navEl = document.getElementById("appNav");
+    if (navEl) navEl.setAttribute("aria-label", t("tablistAria"));
+    const cc = document.getElementById("clockControls");
+    if (cc) cc.setAttribute("aria-label", t("clockSectionAria"));
+    filterSelect();
+    render();
+    updateLangButtons();
+    refreshWsLabel();
+    document.title = t("appTitle");
+  }
+
+  function setLanguage(code) {
+    if (!window.APP_I18N?.[code]) return;
+    locale = code;
+    localStorage.setItem(LOCALE_STORAGE_KEY, code);
+    applyLocale();
+  }
+
+  document.querySelectorAll("[data-set-lang]").forEach((btn) => {
+    btn.addEventListener("click", () => setLanguage(btn.getAttribute("data-set-lang")));
+  });
+
+  let ws;
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const wsUrl = `${proto}//${window.location.host}/ws`;
+  const grid = document.getElementById("grid");
+  const wsDot = document.getElementById("wsDot");
+  const wsLabel = document.getElementById("wsLabel");
+  const tzSelect = document.getElementById("tzSelect");
+  const tzSearch = document.getElementById("tzSearch");
+  const btnAdd = document.getElementById("btnAdd");
+  const appVersionEl = document.getElementById("appVersion");
+  const btnAbout = document.getElementById("btnAbout");
+  const aboutDialog = document.getElementById("aboutDialog");
+  const aboutBody = document.getElementById("aboutBody");
+  const aboutClose = document.getElementById("aboutClose");
+
+  let tiles = [];
+  let timesByTz = new Map();
+  let allZones = [];
+  let dragSourceId = null;
+
+  function setWsStatus(ok, text) {
+    wsDot.classList.toggle("ok", ok);
+    wsLabel.textContent = text;
+  }
+
+  function refreshWsLabel() {
+    if (!ws) {
+      wsLabel.textContent = t("wsConnecting");
+      return;
+    }
+    if (ws.readyState === WebSocket.OPEN) setWsStatus(true, t("wsLive"));
+    else if (ws.readyState === WebSocket.CONNECTING) setWsStatus(false, t("wsConnecting"));
+    else setWsStatus(false, t("wsReconnecting"));
+  }
+
+  async function loadAppVersion() {
+    try {
+      const r = await apiFetch("/api/version");
+      const d = await r.json();
+      appVersionEl.textContent = d.version ? `v${d.version}` : "";
+    } catch {
+      appVersionEl.textContent = "";
+    }
+  }
+
+  function fmtAboutCell(v) {
+    if (v == null || v === "") return t("aboutMissing");
+    return String(v);
+  }
+
+  function renderAboutRows(data) {
+    const rows = [
+      [t("aboutApp"), fmtAboutCell(data.app)],
+      [t("aboutFrontend"), fmtAboutCell(data.frontend)],
+      [t("aboutBackendPython"), fmtAboutCell(data.backend?.python)],
+      [t("aboutBackendFastapi"), fmtAboutCell(data.backend?.fastapi)],
+      [t("aboutBackendUvicorn"), fmtAboutCell(data.backend?.uvicorn)],
+      [
+        t("aboutDocker"),
+        data.docker != null && data.docker !== ""
+          ? String(data.docker)
+          : t("aboutDockerUnset"),
+      ],
+    ];
+    const c = data.components || {};
+    if (c.plotly) rows.push([t("aboutPlotly"), fmtAboutCell(c.plotly)]);
+    if (c.open_meteo) rows.push([t("aboutOpenMeteo"), fmtAboutCell(c.open_meteo)]);
+    if (c.fonts) rows.push([t("aboutFonts"), fmtAboutCell(c.fonts)]);
+    aboutBody.innerHTML = rows
+      .map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`)
+      .join("");
+  }
+
+  btnAbout.addEventListener("click", async () => {
+    try {
+      const r = await apiFetch("/api/about");
+      const d = await r.json();
+      renderAboutRows(d);
+      aboutDialog.showModal();
+    } catch (e) {
+      alert(`${t("errAboutLoad")} ${e}`);
+    }
+  });
+
+  aboutClose.addEventListener("click", () => aboutDialog.close());
+
+  function escapeHtml(s) {
+    const d = document.createElement("div");
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function render() {
+    grid.innerHTML = "";
+    if (!tiles.length) {
+      const p = document.createElement("p");
+      p.className = "empty";
+      p.textContent = t("emptyTiles");
+      grid.appendChild(p);
+      return;
+    }
+    for (const tile of tiles) {
+      const info = timesByTz.get(tile.timezone) || {};
+      const el = document.createElement("article");
+      el.className = "tile";
+      el.setAttribute("role", "listitem");
+      el.draggable = true;
+      el.dataset.id = tile.id;
+      el.dataset.tz = tile.timezone;
+      el.innerHTML = `
+          <h2>${escapeHtml(tile.timezone)}</h2>
+          <div class="tile-clock-wrap">
+            <svg class="analog-clock" viewBox="0 0 100 100" aria-hidden="true">
+              <circle class="face" cx="50" cy="50" r="44" />
+              <g class="clock-ticks">${analogClockTicksSvg()}</g>
+              <g class="hand-hour" transform="rotate(0 50 50)"><line x1="50" y1="50" x2="50" y2="30" /></g>
+              <g class="hand-minute" transform="rotate(0 50 50)"><line x1="50" y1="50" x2="50" y2="22" /></g>
+              <g class="hand-second" transform="rotate(0 50 50)"><line x1="50" y1="52" x2="50" y2="16" /></g>
+              <circle class="cap" cx="50" cy="50" r="2.4" />
+            </svg>
+          </div>
+          <div class="tile-date">${escapeHtml(formatTileDateLine(info))}</div>
+          <div class="tile-time">${escapeHtml(formatTileTimeUtcLine(info))}</div>
+          <button type="button" class="remove" draggable="false" data-id="${escapeHtml(tile.id)}" title="${escapeHtml(t("removeTitle"))}">×</button>
+        `;
+      syncClockAnchor(tile.id, info);
+      const rm = el.querySelector(".remove");
+      rm.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        removeTile(tile.id);
+      });
+      rm.addEventListener("mousedown", (ev) => ev.stopPropagation());
+      grid.appendChild(el);
+    }
+  }
+
+  function applyTimes(times) {
+    timesByTz.clear();
+    for (const x of times || []) {
+      timesByTz.set(x.timezone, x);
+    }
+    render();
+  }
+
+  function connectWs() {
+    ws = new WebSocket(wsUrl);
+    ws.onopen = () => setWsStatus(true, t("wsLive"));
+    ws.onclose = () => {
+      setWsStatus(false, t("wsReconnecting"));
+      setTimeout(connectWs, 2000);
+    };
+    ws.onerror = () => setWsStatus(false, t("wsError"));
+    ws.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === "init") {
+        if (msg.activeRoute) followNavIfNeeded(msg.activeRoute);
+        tiles = msg.tiles || tiles;
+        applyTimes(msg.times);
+      } else if (msg.type === "tick") {
+        tiles = msg.tiles || tiles;
+        applyTimes(msg.times);
+      } else if (msg.type === "tiles_updated") {
+        tiles = msg.tiles || [];
+        render();
+      } else if (msg.type === "nav_updated" && msg.activeRoute) {
+        followNavIfNeeded(msg.activeRoute, { force: true });
+      }
+    };
+  }
+
+  grid.addEventListener("dragstart", (e) => {
+    const tile = e.target.closest(".tile");
+    if (!tile || e.target.closest(".remove")) {
+      e.preventDefault();
+      return;
+    }
+    dragSourceId = tile.dataset.id;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", dragSourceId);
+    tile.classList.add("dragging");
+  });
+
+  grid.addEventListener("dragend", () => {
+    grid.querySelectorAll(".tile.dragging, .tile.drag-over").forEach((el) => {
+      el.classList.remove("dragging", "drag-over");
+    });
+    dragSourceId = null;
+  });
+
+  grid.addEventListener("dragover", (e) => {
+    const tile = e.target.closest(".tile");
+    if (!tile || !dragSourceId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  });
+
+  grid.addEventListener("dragenter", (e) => {
+    const tile = e.target.closest(".tile");
+    if (!tile || !dragSourceId || tile.dataset.id === dragSourceId) return;
+    tile.classList.add("drag-over");
+  });
+
+  grid.addEventListener("dragleave", (e) => {
+    const tile = e.target.closest(".tile");
+    if (tile && e.relatedTarget && !tile.contains(e.relatedTarget)) {
+      tile.classList.remove("drag-over");
+    }
+  });
+
+  grid.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    const targetTile = e.target.closest(".tile");
+    grid.querySelectorAll(".tile.drag-over").forEach((el) => el.classList.remove("drag-over"));
+    if (!targetTile || !dragSourceId) return;
+    const targetId = targetTile.dataset.id;
+    const sourceId = dragSourceId;
+    if (sourceId === targetId) return;
+    const from = tiles.findIndex((x) => x.id === sourceId);
+    const to = tiles.findIndex((x) => x.id === targetId);
+    if (from < 0 || to < 0) return;
+    const prev = tiles.map((x) => ({ ...x }));
+    const next = [...tiles];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    tiles = next;
+    render();
+    try {
+      const r = await apiFetch("/api/tiles/order", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order: next.map((x) => x.id) }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        tiles = prev;
+        render();
+        alert(err.detail || r.statusText);
+      }
+    } catch (err) {
+      tiles = prev;
+      render();
+      alert(String(err));
+    }
+  });
+
+  async function loadTimezones() {
+    const r = await apiFetch("/api/timezones?limit=500");
+    const data = await r.json();
+    allZones = data.timezones || [];
+    filterSelect();
+  }
+
+  function filterSelect() {
+    const q = (tzSearch.value || "").toLowerCase();
+    const filtered = q
+      ? allZones.filter((z) => z.toLowerCase().includes(q))
+      : allZones.slice(0, 150);
+    tzSelect.innerHTML = "";
+    for (const z of filtered.slice(0, 200)) {
+      const opt = document.createElement("option");
+      opt.value = z;
+      opt.textContent = z;
+      tzSelect.appendChild(opt);
+    }
+    if (!tzSelect.options.length) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = t("selectNoResult");
+      tzSelect.appendChild(opt);
+    }
+  }
+
+  tzSearch.addEventListener("input", filterSelect);
+
+  btnAdd.addEventListener("click", async () => {
+    const timezone = tzSelect.value;
+    if (!timezone) return;
+    btnAdd.disabled = true;
+    try {
+      const r = await apiFetch("/api/tiles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timezone }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        alert(err.detail || r.statusText);
+      }
+    } finally {
+      btnAdd.disabled = false;
+    }
+  });
+
+  async function removeTile(id) {
+    const r = await apiFetch(`/api/tiles/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      alert(err.detail || r.statusText);
+    } else {
+      clockSyncByTileId.delete(id);
+    }
+  }
+
+  wireNavLinks();
+  (async function alignRouteFromServer() {
+    try {
+      const r = await apiFetch("/api/nav");
+      if (r.ok) {
+        const d = await r.json();
+        if (d.activeRoute) followNavIfNeeded(d.activeRoute);
+      }
+    } catch (_) {}
+  })();
+
+  applyLocale();
+  loadAppVersion();
+  loadTimezones();
+  connectWs();
+})();
