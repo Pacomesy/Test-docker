@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Horloge &amp; météo</title>
+  <link rel="stylesheet" href="/assets/app.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@400;600&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <h1>
+        <span data-i18n="appTitle"></span>
+        <span class="version-badge" id="appVersion" data-i18n-aria-label="versionAria"></span>
+      </h1>
+    </div>
+    <div class="header-right">
+      <div class="control-strip" id="controlStrip">
+        <span id="controlStatusLabel" class="control-status"></span>
+        <span id="controlFeedback" class="control-feedback" hidden role="status" aria-live="polite"></span>
+        <button type="button" id="btnTakeControl" class="btn-secondary" hidden></button>
+      </div>
+      <div class="lang-switch" role="group" id="langSwitchGroup">
+        <button type="button" class="btn-secondary lang-btn" data-set-lang="de" aria-pressed="false">DE</button>
+        <button type="button" class="btn-secondary lang-btn" data-set-lang="fr" aria-pressed="false">FR</button>
+        <button type="button" class="btn-secondary lang-btn" data-set-lang="it" aria-pressed="false">IT</button>
+        <button type="button" class="btn-secondary lang-btn" data-set-lang="en" aria-pressed="false">EN</button>
+      </div>
+      <button type="button" id="btnAbout" class="btn-secondary" data-i18n="btnAbout"></button>
+      <div class="status">
+        <span class="dot" id="wsDot" aria-hidden="true"></span>
+        <span id="wsLabel"></span>
+      </div>
+    </div>
+  </header>
+  <main id="appMain">
+    <nav class="tabs app-nav" id="appNav" aria-label="">
+      <a href="/" class="tab active" id="navClock" data-sync-nav="/" data-i18n="tabClock" aria-current="page"></a>
+      <a href="/meteo" class="tab" id="navMeteo" data-sync-nav="/meteo" data-i18n="tabTemp"></a>
+    </nav>
+
+    <div class="tab-panel" id="panelClock">
+      <section class="controls" id="clockControls" aria-label="">
+        <div>
+          <label for="tzSearch" data-i18n="labelTzSearch"></label>
+          <input type="search" id="tzSearch" data-i18n-placeholder="phTzSearch" placeholder="" autocomplete="off" />
+        </div>
+        <div>
+          <label for="tzSelect" data-i18n="labelTzSelect"></label>
+          <select id="tzSelect"></select>
+        </div>
+        <button type="button" id="btnAdd" data-i18n="btnAddTile"></button>
+      </section>
+      <p class="hint-drag" data-i18n="hintDrag"></p>
+      <div class="grid" id="grid" role="list"></div>
+    </div>
+  </main>
+
+  <dialog class="about-dialog" id="aboutDialog" aria-labelledby="aboutTitle">
+    <div class="about-inner">
+      <h2 id="aboutTitle" data-i18n="aboutTitle"></h2>
+      <table class="about-table" id="aboutTable">
+        <tbody id="aboutBody"></tbody>
+      </table>
+      <div class="about-actions">
+        <button type="button" id="aboutClose" data-i18n="btnClose"></button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="about-dialog control-dialog" id="controlWaitDialog" aria-labelledby="controlWaitTitle">
+    <div class="about-inner">
+      <h2 id="controlWaitTitle"></h2>
+      <p id="controlWaitText" class="control-dialog-p"></p>
+      <p id="controlForceHint" class="control-force-hint" aria-live="polite"></p>
+      <div class="about-actions control-dialog-actions">
+        <button type="button" id="btnControlForce" class="btn-secondary" disabled></button>
+        <button type="button" id="btnControlWaitCancel" class="btn-secondary"></button>
+      </div>
+    </div>
+  </dialog>
+  <dialog class="about-dialog control-dialog" id="controlApproveDialog" aria-labelledby="controlApproveTitle">
+    <div class="about-inner">
+      <h2 id="controlApproveTitle"></h2>
+      <p id="controlApproveText" class="control-dialog-p"></p>
+      <div class="about-actions control-dialog-actions">
+        <button type="button" id="btnControlDeny" class="btn-secondary"></button>
+        <button type="button" id="btnControlApprove"></button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="/assets/locales.js"></script>
+  <script src="/assets/control-client.js"></script>
+  <script src="/assets/clock-page.js"></script>
+</body>
+</html>

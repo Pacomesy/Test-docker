@@ -1,5 +1,5 @@
 /**
- * Chaînes UI (DE, FR, IT, EN). Chargé avant le script principal dans index.html.
+ * Chaînes UI (DE, FR, IT, EN). Chargé avant clock-page.js / meteo-page.js.
  * Clés : même ensemble pour chaque locale. {name}, {label}, {days} pour t().
  */
 window.APP_I18N = {
@@ -79,6 +79,21 @@ window.APP_I18N = {
     selectNoResult: "Aucun résultat",
     selectedPlace: "Lieu sélectionné :",
     yAxisC: "°C",
+    controlStatusYou: "Vous contrôlez l’application",
+    controlStatusReadonly: "Lecture seule — demandez le contrôle pour modifier",
+    btnTakeControl: "Prendre le contrôle",
+    controlWaitTitle: "Demande en cours",
+    controlWaitText:
+      "En attente de l’approbation de l’utilisateur qui contrôle l’application actuellement. Vous pouvez forcer le contrôle si personne ne répond.",
+    btnControlForce: "Forcer le contrôle",
+    controlForceCountdown: "Bouton actif dans {n} s (si personne ne répond).",
+    controlForceReady: "Vous pouvez forcer le contrôle.",
+    controlRequestDenied: "Le contrôleur a refusé votre demande de prise de contrôle.",
+    btnControlWaitCancel: "Fermer",
+    controlApproveTitle: "Demande de contrôle",
+    controlApproveText: "Un autre utilisateur souhaite prendre le contrôle de l’application. Approuver ou refuser ?",
+    btnControlApprove: "Approuver",
+    btnControlDeny: "Refuser",
   },
   de: {
     appTitle: "Uhr & Wetter",
@@ -156,6 +171,22 @@ window.APP_I18N = {
     selectNoResult: "Kein Treffer",
     selectedPlace: "Gewählter Ort:",
     yAxisC: "°C",
+    controlStatusYou: "Sie steuern die Anwendung",
+    controlStatusReadonly: "Nur Lesen — Steuerung anfordern zum Bearbeiten",
+    btnTakeControl: "Steuerung übernehmen",
+    controlWaitTitle: "Anfrage läuft",
+    controlWaitText:
+      "Warten auf Zustimmung des aktuellen Steuerers. Sie können die Steuerung erzwingen, wenn niemand antwortet.",
+    btnControlForce: "Steuerung erzwingen",
+    controlForceCountdown: "Schaltfläche in {n} s aktiv (falls niemand antwortet).",
+    controlForceReady: "Sie können die Steuerung erzwingen.",
+    controlRequestDenied: "Der Steuerer hat Ihre Anfrage abgelehnt.",
+    btnControlWaitCancel: "Schließen",
+    controlApproveTitle: "Steuerungsanfrage",
+    controlApproveText:
+      "Ein anderer Benutzer möchte die Steuerung übernehmen. Genehmigen oder ablehnen?",
+    btnControlApprove: "Genehmigen",
+    btnControlDeny: "Ablehnen",
   },
   it: {
     appTitle: "Orologio & meteo",
@@ -233,6 +264,22 @@ window.APP_I18N = {
     selectNoResult: "Nessun risultato",
     selectedPlace: "Luogo selezionato:",
     yAxisC: "°C",
+    controlStatusYou: "Stai controllando l’app",
+    controlStatusReadonly: "Sola lettura — richiedi il controllo per modificare",
+    btnTakeControl: "Prendi il controllo",
+    controlWaitTitle: "Richiesta in corso",
+    controlWaitText:
+      "In attesa dell’approvazione di chi controlla l’app. Puoi forzare il controllo se nessuno risponde.",
+    btnControlForce: "Forza controllo",
+    controlForceCountdown: "Pulsante attivo tra {n} s (se nessuno risponde).",
+    controlForceReady: "Puoi forzare il controllo.",
+    controlRequestDenied: "Chi controlla l’app ha rifiutato la tua richiesta.",
+    btnControlWaitCancel: "Chiudi",
+    controlApproveTitle: "Richiesta di controllo",
+    controlApproveText:
+      "Un altro utente vuole prendere il controllo. Approvare o rifiutare?",
+    btnControlApprove: "Approva",
+    btnControlDeny: "Rifiuta",
   },
   en: {
     appTitle: "Clock & weather",
@@ -310,5 +357,21 @@ window.APP_I18N = {
     selectNoResult: "No results",
     selectedPlace: "Selected place:",
     yAxisC: "°C",
+    controlStatusYou: "You are in control",
+    controlStatusReadonly: "Read-only — take control to make changes",
+    btnTakeControl: "Take control",
+    controlWaitTitle: "Request pending",
+    controlWaitText:
+      "Waiting for approval from the user who currently controls the app. You can force control if no one responds.",
+    btnControlForce: "Force control",
+    controlForceCountdown: "Button enabled in {n} s (if no one responds).",
+    controlForceReady: "You can force control now.",
+    controlRequestDenied: "The current controller denied your request.",
+    btnControlWaitCancel: "Close",
+    controlApproveTitle: "Control request",
+    controlApproveText:
+      "Another user wants to take control of the app. Approve or deny?",
+    btnControlApprove: "Approve",
+    btnControlDeny: "Deny",
   },
 };
